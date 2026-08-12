@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabaseClient'
 import './App.css'
 
+const LIMITE_PLAN_GRATIS = 15
+const WHATSAPP_SOPORTE = '55395493' // tu número, el mismo que usaste en Supabase de prueba — cámbialo si es otro
+
 function slugify(text) {
   return text
     .toString()
@@ -603,6 +606,10 @@ function PanelVendedor({ vendedor, setVendedor }) {
 
   async function guardar(e) {
     e.preventDefault()
+    if (!editingId && vendedor.plan !== 'pro' && productos.length >= LIMITE_PLAN_GRATIS) {
+      mostrarToast(`⚠️ Llegaste al límite de ${LIMITE_PLAN_GRATIS} productos de tu plan gratis`)
+      return
+    }
     setSaving(true)
     const urlsNuevas = []
     for (const file of fotosNuevas) {
@@ -1031,6 +1038,23 @@ function PanelVendedor({ vendedor, setVendedor }) {
           </form>
         </div>
 
+        <div className="form-card" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:13 }}>
+              Plan {vendedor.plan === 'pro' ? 'Pro ✨' : 'Gratis'}
+            </div>
+            <div style={{ fontSize:11, color:'#57536B', marginTop:2 }}>
+              {vendedor.plan === 'pro' ? 'Productos ilimitados' : `${productos.length} de ${LIMITE_PLAN_GRATIS} productos usados`}
+            </div>
+          </div>
+          {vendedor.plan !== 'pro' && (
+            <a href={linkWhatsapp(WHATSAPP_SOPORTE, `Hola, quiero pasar mi tienda "${vendedor.nombre_tienda}" al plan Pro de VendéLive`)} target="_blank" rel="noreferrer"
+              style={{ fontSize:11, fontWeight:700, background:'#17162A', color:'#fff', padding:'7px 12px', borderRadius:999, textDecoration:'none' }}>
+              Pasar a Pro
+            </a>
+          )}
+        </div>
+
         <div className="section-title">Mis productos <span className="count-pill">{productos.length}</span></div>
         {productos.length === 0 && <div className="empty">Aún no agregás productos.</div>}
         {productos.map(p => (
@@ -1110,6 +1134,11 @@ function AdminPanel() {
     cargar()
   }
 
+  async function cambiarPlan(id, nuevoPlan) {
+    await supabase.from('vendedores').update({ plan: nuevoPlan }).eq('id', id)
+    cargar()
+  }
+
   if (loading) return <PantallaCarga />
 
   if (!session) {
@@ -1181,7 +1210,13 @@ function AdminPanel() {
               <button className="btn" style={{background: v.estado==='suspendido' ? '#D62A48' : '#F1EDE4', color: v.estado==='suspendido' ? '#fff' : '#17162A'}}
                 onClick={()=>cambiarEstado(v.id, 'suspendido')}>Suspender</button>
             </div>
-            <p style={{fontSize:11, marginTop:8, color:'#57536B'}}>Estado actual: <strong>{v.estado}</strong></p>
+            <div className="row2" style={{marginTop:8}}>
+              <button className="btn" style={{background: v.plan!=='pro' ? '#17162A' : '#F1EDE4', color: v.plan!=='pro' ? '#fff' : '#17162A'}}
+                onClick={()=>cambiarPlan(v.id, 'gratis')}>Plan Gratis</button>
+              <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color: v.plan==='pro' ? '#17162A' : '#17162A'}}
+                onClick={()=>cambiarPlan(v.id, 'pro')}>Plan Pro ✨</button>
+            </div>
+            <p style={{fontSize:11, marginTop:8, color:'#57536B'}}>Estado: <strong>{v.estado}</strong> · Plan: <strong>{v.plan || 'gratis'}</strong></p>
           </div>
         ))}
         {vendedores.length === 0 && <div className="empty">Aún no hay tiendas registradas.</div>}
