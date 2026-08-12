@@ -4,6 +4,7 @@ import './App.css'
 
 const LIMITE_PLAN_GRATIS = 15
 const WHATSAPP_SOPORTE = '55395493' // tu número, el mismo que usaste en Supabase de prueba — cámbialo si es otro
+const ADMIN_EMAIL = 'luismartz23@gmail.com'
 
 function slugify(text) {
   return text
@@ -68,6 +69,7 @@ export default function App() {
   if (recovery) return <NuevaClave onDone={() => setRecovery(false)} />
   if (loadingSession) return <PantallaCarga />
   if (!session) return <Auth />
+  if (session.user.email === ADMIN_EMAIL) return <AdminPanel />
   if (checkingVendedor) return <PantallaCarga />
   if (!vendedor) return <CrearTienda userId={session.user.id} correo={session.user.email} onCreated={setVendedor} />
   return <PanelVendedor vendedor={vendedor} setVendedor={setVendedor} />
@@ -361,6 +363,10 @@ function CrearTienda({ userId, correo, onCreated }) {
               {loading ? 'Creando…' : 'Crear mi tienda'}
             </button>
           </form>
+          <p style={{fontSize:11.5, marginTop:14, textAlign:'center', color:'#57536B', cursor:'pointer', textDecoration:'underline'}}
+            onClick={()=>supabase.auth.signOut()}>
+            Esta no es mi cuenta — cerrar sesión
+          </p>
         </div>
       </main>
     </div>
@@ -1083,8 +1089,6 @@ function PanelVendedor({ vendedor, setVendedor }) {
 // ============================================
 // PANEL DE ADMINISTRADOR (solo para ti)
 // ============================================
-const ADMIN_EMAIL = 'luismartz23@gmail.com'
-
 function AdminPanel() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
