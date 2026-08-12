@@ -438,7 +438,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
       p.observacion || '',
       p.estado
     ])
-    const csv = '\uFEFF' + [encabezados, ...filas].map(fila => fila.map(escapar).join(',')).join('\r\n')
+    const csv = '\uFEFF' + [encabezados, ...filas].map(fila => fila.map(escapar).join(';')).join('\r\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -447,6 +447,46 @@ function PanelVendedor({ vendedor, setVendedor }) {
     a.download = `pedidos_${vendedor.slug}_${rango}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  function exportarPDF() {
+    const rango = (filtroDesde || filtroHasta) ? `${filtroDesde||'…'} al ${filtroHasta||'hoy'}` : 'Todos los pedidos'
+    const filas = pedidosFiltrados.map(p => `
+      <tr>
+        <td>${new Date(p.creado_en).toLocaleDateString('es-GT')}</td>
+        <td>${p.id.slice(0,8).toUpperCase()}</td>
+        <td>${p.productos?.nombre || ''}</td>
+        <td>${p.cantidad}</td>
+        <td>Q${((p.precio_unitario||0)*p.cantidad).toFixed(2)}</td>
+        <td>${p.nombre_cliente}<br><span class="sub">${p.telefono_cliente}</span></td>
+        <td>${p.estado}</td>
+      </tr>`).join('')
+    const ventana = window.open('', '_blank')
+    ventana.document.write(`
+      <html><head><title>Pedidos ${vendedor.nombre_tienda}</title>
+      <style>
+        body{ font-family: Arial, sans-serif; padding:24px; color:#111; }
+        h1{ font-size:18px; margin:0; }
+        .meta{ font-size:12px; color:#666; margin-top:2px; margin-bottom:16px; }
+        table{ width:100%; border-collapse:collapse; font-size:11.5px; }
+        th{ text-align:left; background:#17162A; color:#fff; padding:8px 6px; }
+        td{ padding:7px 6px; border-bottom:1px solid #eee; vertical-align:top; }
+        .sub{ color:#888; font-size:10.5px; }
+        .resumen{ margin-top:18px; font-size:13px; font-weight:bold; }
+      </style></head>
+      <body>
+        <h1>${vendedor.nombre_tienda} — Reporte de pedidos</h1>
+        <div class="meta">Periodo: ${rango} · Generado el ${new Date().toLocaleDateString('es-GT')}</div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Pedido</th><th>Producto</th><th>Cant.</th><th>Total</th><th>Cliente</th><th>Estado</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+        <div class="resumen">Total: ${resumen.pedidos} pedidos · Q${resumen.ingresos.toFixed(2)} en ventas</div>
+      </body></html>
+    `)
+    ventana.document.close()
+    ventana.focus()
+    ventana.print()
   }
 
   function imprimirGuia(p) {
@@ -798,10 +838,16 @@ function PanelVendedor({ vendedor, setVendedor }) {
                 <button type="button" className="btn" style={{marginTop:8, background:'#F1EDE4'}}
                   onClick={()=>{setFiltroDesde(''); setFiltroHasta('')}}>Quitar filtro</button>
               )}
-              <button type="button" className="btn" style={{marginTop:8, background:'#1FAE7C', color:'#fff'}}
-                onClick={exportarExcel} disabled={pedidosFiltrados.length===0}>
-                📥 Descargar Excel ({pedidosFiltrados.length})
-              </button>
+              <div className="row2" style={{marginTop:8}}>
+                <button type="button" className="btn" style={{background:'#1FAE7C', color:'#fff'}}
+                  onClick={exportarExcel} disabled={pedidosFiltrados.length===0}>
+                  📥 Excel ({pedidosFiltrados.length})
+                </button>
+                <button type="button" className="btn" style={{background:'#D62A48', color:'#fff'}}
+                  onClick={exportarPDF} disabled={pedidosFiltrados.length===0}>
+                  🧾 PDF
+                </button>
+              </div>
             </div>
 
             <div className="form-card" style={{display:'flex', justifyContent:'space-around', textAlign:'center'}}>
