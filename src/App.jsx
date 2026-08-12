@@ -376,6 +376,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [guardandoLogo, setGuardandoLogo] = useState(false)
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
+  const [busqueda, setBusqueda] = useState('')
 
   async function cargarProductos() {
     const { data } = await supabase.from('productos').select('*').eq('vendedor_id', vendedor.id).order('creado_en', { ascending:false })
@@ -402,14 +403,16 @@ function PanelVendedor({ vendedor, setVendedor }) {
     const fecha = new Date(p.creado_en).toLocaleDateString('es-GT', { day:'2-digit', month:'2-digit', year:'numeric' })
     const ventana = window.open('', '_blank', 'width=380,height=520')
     ventana.document.write(`
-      <html><head><title>Guía de envío</title>
+      <html><head><title>Guía ${p.id.slice(0,8).toUpperCase()}</title>
       <style>
-        body{ font-family: Arial, sans-serif; padding:16px; color:#111; }
-        h2{ margin:0 0 2px; font-size:18px; }
-        .codigo{ font-family: monospace; font-size:12px; color:#555; margin-bottom:12px; }
-        .linea{ border-top:1px dashed #999; margin:10px 0; }
-        p{ margin:4px 0; font-size:14px; }
-        .etq{ font-size:11px; color:#777; text-transform:uppercase; }
+        @page{ size:80mm 100mm; margin:4mm; }
+        *{ box-sizing:border-box; }
+        body{ font-family: Arial, sans-serif; padding:0; margin:0; color:#111; width:72mm; }
+        h2{ margin:0 0 2px; font-size:15px; }
+        .codigo{ font-family: monospace; font-size:10.5px; color:#555; margin-bottom:8px; }
+        .linea{ border-top:1px dashed #999; margin:7px 0; }
+        p{ margin:3px 0; font-size:12.5px; }
+        .etq{ font-size:9.5px; color:#777; text-transform:uppercase; }
       </style></head>
       <body>
         <h2>${vendedor.nombre_tienda}</h2>
@@ -436,6 +439,13 @@ function PanelVendedor({ vendedor, setVendedor }) {
     const fecha = p.creado_en.slice(0,10)
     if (filtroDesde && fecha < filtroDesde) return false
     if (filtroHasta && fecha > filtroHasta) return false
+    if (busqueda) {
+      const q = busqueda.toLowerCase()
+      const enCliente = p.nombre_cliente?.toLowerCase().includes(q)
+      const enProducto = p.productos?.nombre?.toLowerCase().includes(q)
+      const enId = p.id.toUpperCase().includes(busqueda.toUpperCase())
+      if (!enCliente && !enProducto && !enId) return false
+    }
     return true
   })
 
@@ -574,6 +584,12 @@ function PanelVendedor({ vendedor, setVendedor }) {
         {vista === 'pedidos' ? (
           <>
             <div className="form-card">
+              <h3>Buscar</h3>
+              <input type="text" value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+                placeholder="Nombre del cliente, producto o # de pedido" />
+            </div>
+
+            <div className="form-card">
               <h3>Filtrar por fecha</h3>
               <div className="row2">
                 <div style={{flex:1}}>
@@ -626,6 +642,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
                   <div>{p.direccion_cliente}</div>
                   {p.observacion && <div>Obs: {p.observacion}</div>}
                   <div style={{fontSize:11, marginTop:4}}>
+                    #{p.id.slice(0,8).toUpperCase()} ·{' '}
                     {new Date(p.creado_en).toLocaleDateString('es-GT', { day:'2-digit', month:'short', year:'numeric' })}
                     {' · Q'}{(p.precio_unitario ? p.precio_unitario * p.cantidad : 0).toFixed(2)}
                   </div>
