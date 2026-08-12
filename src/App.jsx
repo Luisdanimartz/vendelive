@@ -421,6 +421,34 @@ function PanelVendedor({ vendedor, setVendedor }) {
     cargarPedidos()
   }
 
+  function exportarExcel() {
+    const escapar = v => `"${String(v ?? '').replace(/"/g,'""')}"`
+    const encabezados = ['Fecha','N° Pedido','Producto','Código','Cantidad','Precio unitario','Total','Cliente','Teléfono','Dirección','Observación','Estado']
+    const filas = pedidosFiltrados.map(p => [
+      new Date(p.creado_en).toLocaleDateString('es-GT'),
+      p.id.slice(0,8).toUpperCase(),
+      p.productos?.nombre || '',
+      p.productos?.codigo || '',
+      p.cantidad,
+      (p.precio_unitario || 0).toFixed(2),
+      ((p.precio_unitario || 0) * p.cantidad).toFixed(2),
+      p.nombre_cliente,
+      p.telefono_cliente,
+      p.direccion_cliente,
+      p.observacion || '',
+      p.estado
+    ])
+    const csv = '\uFEFF' + [encabezados, ...filas].map(fila => fila.map(escapar).join(',')).join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const rango = filtroDesde || filtroHasta ? `${filtroDesde||'inicio'}_a_${filtroHasta||'hoy'}` : 'todos'
+    a.href = url
+    a.download = `pedidos_${vendedor.slug}_${rango}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function imprimirGuia(p) {
     const fecha = new Date(p.creado_en).toLocaleDateString('es-GT', { day:'2-digit', month:'2-digit', year:'numeric' })
     const ventana = window.open('', '_blank', 'width=380,height=520')
@@ -770,6 +798,10 @@ function PanelVendedor({ vendedor, setVendedor }) {
                 <button type="button" className="btn" style={{marginTop:8, background:'#F1EDE4'}}
                   onClick={()=>{setFiltroDesde(''); setFiltroHasta('')}}>Quitar filtro</button>
               )}
+              <button type="button" className="btn" style={{marginTop:8, background:'#1FAE7C', color:'#fff'}}
+                onClick={exportarExcel} disabled={pedidosFiltrados.length===0}>
+                📥 Descargar Excel ({pedidosFiltrados.length})
+              </button>
             </div>
 
             <div className="form-card" style={{display:'flex', justifyContent:'space-around', textAlign:'center'}}>
