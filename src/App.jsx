@@ -375,6 +375,9 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [logoNuevo, setLogoNuevo] = useState(null)
   const [logoPreview, setLogoPreview] = useState(vendedor.logo_url)
   const [guardandoLogo, setGuardandoLogo] = useState(false)
+  const [frase, setFrase] = useState(vendedor.frase || '')
+  const [telefonoInfo, setTelefonoInfo] = useState(vendedor.telefono || '')
+  const [guardandoInfo, setGuardandoInfo] = useState(false)
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
   const [busqueda, setBusqueda] = useState('')
@@ -562,21 +565,38 @@ function PanelVendedor({ vendedor, setVendedor }) {
     setGuardandoLogo(false)
   }
 
+  async function guardarInfo() {
+    setGuardandoInfo(true)
+    await supabase.from('vendedores').update({ frase, telefono: telefonoInfo }).eq('id', vendedor.id)
+    setVendedor({ ...vendedor, frase, telefono: telefonoInfo })
+    mostrarToast('Información actualizada')
+    setGuardandoInfo(false)
+  }
+
   const link = `${window.location.origin}/tienda/${vendedor.slug}`
 
   return (
     <div className="phone">
       <header className="hero">
-        <span className="live-badge"><span className="dot"></span>En vivo</span>
-        <h1 className="brand">Vendé<span>Live</span></h1>
-        <div className="store-chip" style={{display:'inline-flex', alignItems:'center', gap:8}}>
-          <Avatar nombre={vendedor.nombre_tienda} logo_url={vendedor.logo_url} size={18} />
-          <span>{vendedor.nombre_tienda}</span>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+          <span className="live-badge"><span className="dot"></span>En vivo</span>
+          <p style={{fontSize:11, cursor:'pointer', color:'#B8B4C9', textDecoration:'underline', margin:0}}
+            onClick={()=>supabase.auth.signOut()}>
+            Cerrar sesión
+          </p>
         </div>
-        <p style={{fontSize:11.5, marginTop:10, cursor:'pointer', color:'#B8B4C9', textDecoration:'underline'}}
-          onClick={()=>supabase.auth.signOut()}>
-          Cerrar sesión
-        </p>
+        <div style={{textAlign:'center', marginTop:14}}>
+          <Avatar nombre={vendedor.nombre_tienda} logo_url={vendedor.logo_url} size={76} />
+          <h1 style={{fontFamily:"'Space Grotesk',sans-serif", fontSize:21, fontWeight:700, marginTop:10}}>{vendedor.nombre_tienda}</h1>
+          {vendedor.frase && <p style={{fontSize:12.5, color:'#C9C4DC', marginTop:2, fontStyle:'italic'}}>{vendedor.frase}</p>}
+          {vendedor.telefono && (
+            <a href={`tel:${vendedor.telefono}`} style={{
+              display:'inline-flex', alignItems:'center', gap:6, marginTop:8,
+              background:'rgba(255,255,255,0.1)', padding:'5px 12px', borderRadius:999,
+              fontSize:12, color:'#fff', textDecoration:'none', fontWeight:600
+            }}>📞 {vendedor.telefono}</a>
+          )}
+        </div>
       </header>
       <main>
         <div style={{display:'flex', gap:8, marginBottom:16, background:'#F1EDE4', padding:4, borderRadius:14}}>
@@ -702,6 +722,13 @@ function PanelVendedor({ vendedor, setVendedor }) {
               {guardandoLogo ? 'Guardando…' : 'Guardar logo'}
             </button>
           )}
+          <label>Frase de tu tienda</label>
+          <input type="text" value={frase} onChange={e=>setFrase(e.target.value)} placeholder="Ej. Moda que enamora, calidad que perdura" maxLength={80} />
+          <label>Teléfono de contacto</label>
+          <input type="text" value={telefonoInfo} onChange={e=>setTelefonoInfo(e.target.value)} placeholder="0000-0000" />
+          <button className="btn btn-primary" disabled={guardandoInfo} onClick={guardarInfo}>
+            {guardandoInfo ? 'Guardando…' : 'Guardar frase y teléfono'}
+          </button>
         </div>
 
         <div className="form-card">
@@ -1022,12 +1049,25 @@ function TiendaPublica({ slug }) {
   return (
     <div className="phone">
       <header className="hero">
-        <span className="live-badge"><span className="dot"></span>En vivo</span>
-        <div style={{marginTop:10}}>
-          <Avatar nombre={vendedor.nombre_tienda} logo_url={vendedor.logo_url} size={44} />
+        <div style={{textAlign:'center'}}>
+          <span className="live-badge"><span className="dot"></span>En vivo</span>
+          <div style={{marginTop:14}}>
+            <Avatar nombre={vendedor.nombre_tienda} logo_url={vendedor.logo_url} size={76} />
+          </div>
+          <h1 style={{fontFamily:"'Space Grotesk',sans-serif", fontSize:22, fontWeight:700, marginTop:10}}>{vendedor.nombre_tienda}</h1>
+          {vendedor.frase ? (
+            <p style={{fontSize:12.5, color:'#C9C4DC', marginTop:2, fontStyle:'italic'}}>{vendedor.frase}</p>
+          ) : (
+            <p className="tagline">Catálogo en vivo</p>
+          )}
+          {vendedor.telefono && (
+            <a href={`tel:${vendedor.telefono}`} style={{
+              display:'inline-flex', alignItems:'center', gap:6, marginTop:10,
+              background:'rgba(255,255,255,0.1)', padding:'6px 14px', borderRadius:999,
+              fontSize:12.5, color:'#fff', textDecoration:'none', fontWeight:600
+            }}>📞 Llamar · {vendedor.telefono}</a>
+          )}
         </div>
-        <h1 className="brand" style={{marginTop:8}}>{vendedor.nombre_tienda}</h1>
-        <p className="tagline">Catálogo en vivo</p>
       </header>
       <main>
         {productos.length === 0 && <div className="empty">Todavía no hay productos.</div>}
