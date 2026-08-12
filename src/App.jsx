@@ -770,6 +770,7 @@ function AdminPanel() {
 function TiendaPublica({ slug }) {
   const [vendedor, setVendedor] = useState(undefined)
   const [productos, setProductos] = useState([])
+  const [indice, setIndice] = useState(0)
   const [buyProduct, setBuyProduct] = useState(null)
   const [qty, setQty] = useState(1)
   const [buyer, setBuyer] = useState({ nombre:'', telefono:'', direccion:'', observacion:'' })
@@ -833,26 +834,65 @@ function TiendaPublica({ slug }) {
         <p className="tagline">Catálogo en vivo</p>
       </header>
       <main>
-        <div className="grid">
-          {productos.map(p => (
-            <div className="pcard" key={p.id}>
-              <div className="imgwrap">
-                {p.foto_url && <img src={p.foto_url} />}
-                {p.existencia === 0 && <div className="agotado-tag">AGOTADO</div>}
+        {productos.length === 0 && <div className="empty">Todavía no hay productos.</div>}
+        {productos.length > 0 && (() => {
+          const p = productos[indice]
+          const irAnterior = () => setIndice(i => (i - 1 + productos.length) % productos.length)
+          const irSiguiente = () => setIndice(i => (i + 1) % productos.length)
+          return (
+            <div>
+              <div style={{ position:'relative' }}>
+                <div className="pcard" style={{ width:'100%' }}>
+                  <div className="imgwrap" style={{ height:260 }}>
+                    {p.foto_url && <img src={p.foto_url} />}
+                    {p.existencia === 0 && <div className="agotado-tag">AGOTADO</div>}
+                  </div>
+                  <div className="body" style={{ padding:16, gap:8 }}>
+                    <span className="codigo" style={{ fontSize:11.5 }}>{p.codigo}</span>
+                    <div className="nombre" style={{ fontSize:17 }}>{p.nombre}</div>
+                    {p.descripcion && <div style={{ fontSize:12.5, color:'#57536B' }}>{p.descripcion}</div>}
+                    <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio).toFixed(2)}</span>
+                    <span className="exist" style={{ fontSize:12 }}>{p.existencia>0 ? p.existencia+' disponibles' : 'Sin existencias'}</span>
+                    <button className="btn btn-live" disabled={p.existencia===0} onClick={()=>abrirCompra(p)}>
+                      <span className="dot"></span>{p.existencia===0?'Agotado':'Comprar'}
+                    </button>
+                  </div>
+                </div>
+
+                {productos.length > 1 && (
+                  <>
+                    <button onClick={irAnterior} aria-label="Producto anterior" style={{
+                      position:'absolute', left:8, top:110, transform:'translateY(-50%)',
+                      width:38, height:38, borderRadius:'50%', border:'none', cursor:'pointer',
+                      background:'rgba(23,22,42,0.55)', color:'#fff', fontSize:18, display:'flex',
+                      alignItems:'center', justifyContent:'center'
+                    }}>‹</button>
+                    <button onClick={irSiguiente} aria-label="Siguiente producto" style={{
+                      position:'absolute', right:8, top:110, transform:'translateY(-50%)',
+                      width:38, height:38, borderRadius:'50%', border:'none', cursor:'pointer',
+                      background:'rgba(23,22,42,0.55)', color:'#fff', fontSize:18, display:'flex',
+                      alignItems:'center', justifyContent:'center'
+                    }}>›</button>
+                  </>
+                )}
               </div>
-              <div className="body">
-                <span className="codigo">{p.codigo}</span>
-                <div className="nombre">{p.nombre}</div>
-                <span className="precio">Q{Number(p.precio).toFixed(2)}</span>
-                <span className="exist">{p.existencia>0 ? p.existencia+' disponibles' : 'Sin existencias'}</span>
-                <button className="btn btn-live" disabled={p.existencia===0} onClick={()=>abrirCompra(p)}>
-                  <span className="dot"></span>{p.existencia===0?'Agotado':'Comprar'}
-                </button>
-              </div>
+
+              {productos.length > 1 && (
+                <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:14 }}>
+                  {productos.map((_, i) => (
+                    <div key={i} onClick={()=>setIndice(i)} style={{
+                      width: i===indice ? 18 : 7, height:7, borderRadius:999, cursor:'pointer',
+                      background: i===indice ? '#FF3B5C' : '#C9C2B4', transition:'width 0.2s'
+                    }} />
+                  ))}
+                </div>
+              )}
+              <p style={{ textAlign:'center', fontSize:11.5, color:'#57536B', marginTop:8 }}>
+                {indice+1} de {productos.length}
+              </p>
             </div>
-          ))}
-          {productos.length===0 && <div className="empty" style={{gridColumn:'1/-1'}}>Todavía no hay productos.</div>}
-        </div>
+          )
+        })()}
       </main>
 
       {buyProduct && (
