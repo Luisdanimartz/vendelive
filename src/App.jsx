@@ -368,7 +368,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [editingId, setEditingId] = useState(null)
   const [foto, setFoto] = useState(null)
   const [fotoPreview, setFotoPreview] = useState(null)
-  const [form, setForm] = useState({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'' })
+  const [form, setForm] = useState({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad' })
   const [toast, setToast] = useState('')
   const [saving, setSaving] = useState(false)
   const [logoNuevo, setLogoNuevo] = useState(null)
@@ -465,14 +465,14 @@ function PanelVendedor({ vendedor, setVendedor }) {
 
   function resetForm() {
     setEditingId(null)
-    setForm({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'' })
+    setForm({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad' })
     setFoto(null)
     setFotoPreview(null)
   }
 
   function editar(p) {
     setEditingId(p.id)
-    setForm({ codigo:p.codigo, nombre:p.nombre, descripcion:p.descripcion||'', precio:p.precio, existencia:p.existencia })
+    setForm({ codigo:p.codigo, nombre:p.nombre, descripcion:p.descripcion||'', precio:p.precio, existencia:p.existencia, unidad:p.unidad||'unidad' })
     setFotoPreview(p.foto_url)
     setFoto(null)
   }
@@ -502,6 +502,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
       descripcion: form.descripcion,
       precio: parseFloat(form.precio),
       existencia: parseInt(form.existencia),
+      unidad: form.unidad,
       foto_url
     }
     if (editingId) {
@@ -712,6 +713,18 @@ function PanelVendedor({ vendedor, setVendedor }) {
             <textarea value={form.descripcion} onChange={e=>setForm({...form, descripcion:e.target.value})} />
             <label>Existencias</label>
             <input type="number" value={form.existencia} onChange={e=>setForm({...form, existencia:e.target.value})} required />
+            <label>Se vende por</label>
+            <select value={form.unidad} onChange={e=>setForm({...form, unidad:e.target.value})}
+              style={{width:'100%', border:'1.5px solid #EAE4D8', background:'#fff', borderRadius:10, padding:'10px 11px', fontFamily:"'Inter',sans-serif", fontSize:13.5, color:'#17162A'}}>
+              <option value="unidad">Unidad</option>
+              <option value="libra">Libra</option>
+              <option value="docena">Docena</option>
+              <option value="metro">Metro</option>
+              <option value="par">Par</option>
+              <option value="paquete">Paquete</option>
+              <option value="hora">Hora</option>
+              <option value="servicio">Servicio</option>
+            </select>
             <button className="btn btn-primary" disabled={saving} type="submit">
               {saving ? 'Guardando…' : (editingId ? 'Actualizar producto' : 'Guardar producto')}
             </button>
@@ -728,7 +741,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
               <div className="nombre">{p.nombre}</div>
               <span className="codigo">{p.codigo}</span>
               <div className="meta">
-                Q{Number(p.precio).toFixed(2)} · {p.existencia} und.
+                Q{Number(p.precio).toFixed(2)}{p.unidad && p.unidad!=='unidad' ? ` / ${p.unidad}` : ''} · {p.existencia} und.
                 <span className={`stock-badge ${p.existencia>0?'stock-ok':'stock-out'}`}>{p.existencia>0?'Disponible':'Agotado'}</span>
               </div>
             </div>
@@ -883,6 +896,7 @@ function TiendaPublica({ slug }) {
   const [indice, setIndice] = useState(0)
   const [carrito, setCarrito] = useState([]) // [{producto, cantidad}]
   const [vistaCarrito, setVistaCarrito] = useState(null) // null | 'carrito' | 'datos'
+  const [zoomFoto, setZoomFoto] = useState(null)
   const [buyer, setBuyer] = useState({ nombre:'', telefono:'', direccion:'', observacion:'' })
   const [toast, setToast] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -989,15 +1003,20 @@ function TiendaPublica({ slug }) {
             <div>
               <div style={{ position:'relative' }}>
                 <div className="pcard" style={{ width:'100%' }}>
-                  <div className="imgwrap" style={{ height:260 }}>
+                  <div className="imgwrap" style={{ height:260, cursor: p.foto_url ? 'zoom-in' : 'default' }} onClick={()=>p.foto_url && setZoomFoto(p.foto_url)}>
                     {p.foto_url && <img src={p.foto_url} />}
+                    {p.foto_url && (
+                      <div style={{ position:'absolute', bottom:8, right:8, background:'rgba(23,22,42,0.6)', color:'#fff', fontSize:10.5, padding:'3px 8px', borderRadius:999, fontWeight:600 }}>
+                        🔍 Toca para ampliar
+                      </div>
+                    )}
                     {p.existencia === 0 && <div className="agotado-tag">AGOTADO</div>}
                   </div>
                   <div className="body" style={{ padding:16, gap:8 }}>
                     <span className="codigo" style={{ fontSize:11.5 }}>{p.codigo}</span>
                     <div className="nombre" style={{ fontSize:17 }}>{p.nombre}</div>
                     {p.descripcion && <div style={{ fontSize:12.5, color:'#57536B' }}>{p.descripcion}</div>}
-                    <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio).toFixed(2)}</span>
+                    <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio).toFixed(2)}{p.unidad && p.unidad!=='unidad' ? ` / ${p.unidad}` : ''}</span>
                     <span className="exist" style={{ fontSize:12 }}>{p.existencia>0 ? p.existencia+' disponibles' : 'Sin existencias'}</span>
                     <button className="btn btn-live" disabled={p.existencia===0 || enCarrito >= p.existencia} onClick={()=>agregarAlCarrito(p)}>
                       <span className="dot"></span>
@@ -1061,7 +1080,7 @@ function TiendaPublica({ slug }) {
                 {item.producto.foto_url ? <img src={item.producto.foto_url} /> : <div className="noimg">sin foto</div>}
                 <div className="info">
                   <div className="nombre">{item.producto.nombre}</div>
-                  <div className="meta">Q{Number(item.producto.precio).toFixed(2)} c/u</div>
+                  <div className="meta">Q{Number(item.producto.precio).toFixed(2)}{item.producto.unidad && item.producto.unidad!=='unidad' ? ` / ${item.producto.unidad}` : ' c/u'}</div>
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
                     <button onClick={()=>cambiarCantidad(item.producto.id,-1)} style={{width:24,height:24,borderRadius:7,border:'none',background:'#F1EDE4',fontWeight:700,cursor:'pointer'}}>–</button>
                     <span style={{fontWeight:700, fontSize:13}}>{item.cantidad}</span>
@@ -1101,6 +1120,19 @@ function TiendaPublica({ slug }) {
               <span className="dot"></span>{confirming ? 'Confirmando…' : 'Confirmar pedido'}
             </button>
           </div>
+        </div>
+      )}
+
+      {zoomFoto && (
+        <div onClick={()=>setZoomFoto(null)} style={{
+          position:'fixed', inset:0, background:'rgba(10,9,20,0.92)', zIndex:50,
+          display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out', padding:20
+        }}>
+          <img src={zoomFoto} style={{ maxWidth:'100%', maxHeight:'100%', borderRadius:12, objectFit:'contain' }} />
+          <button onClick={()=>setZoomFoto(null)} aria-label="Cerrar" style={{
+            position:'absolute', top:18, right:18, width:36, height:36, borderRadius:'50%',
+            border:'none', background:'rgba(255,255,255,0.15)', color:'#fff', fontSize:18, cursor:'pointer'
+          }}>✕</button>
         </div>
       )}
       <div className={`toast ${toast?'show':''}`}>{toast}</div>
