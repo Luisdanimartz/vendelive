@@ -374,6 +374,8 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [logoNuevo, setLogoNuevo] = useState(null)
   const [logoPreview, setLogoPreview] = useState(vendedor.logo_url)
   const [guardandoLogo, setGuardandoLogo] = useState(false)
+  const [filtroDesde, setFiltroDesde] = useState('')
+  const [filtroHasta, setFiltroHasta] = useState('')
 
   async function cargarProductos() {
     const { data } = await supabase.from('productos').select('*').eq('vendedor_id', vendedor.id).order('creado_en', { ascending:false })
@@ -384,7 +386,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
   async function cargarPedidos() {
     const { data } = await supabase
       .from('pedidos')
-      .select('*, productos(nombre, codigo)')
+      .select('*, productos(nombre, codigo, descripcion)')
       .eq('vendedor_id', vendedor.id)
       .order('creado_en', { ascending:false })
     setPedidos(data || [])
@@ -396,7 +398,55 @@ function PanelVendedor({ vendedor, setVendedor }) {
     cargarPedidos()
   }
 
+  function imprimirGuia(p) {
+    const fecha = new Date(p.creado_en).toLocaleDateString('es-GT', { day:'2-digit', month:'2-digit', year:'numeric' })
+    const ventana = window.open('', '_blank', 'width=380,height=520')
+    ventana.document.write(`
+      <html><head><title>Guía de envío</title>
+      <style>
+        body{ font-family: Arial, sans-serif; padding:16px; color:#111; }
+        h2{ margin:0 0 2px; font-size:18px; }
+        .codigo{ font-family: monospace; font-size:12px; color:#555; margin-bottom:12px; }
+        .linea{ border-top:1px dashed #999; margin:10px 0; }
+        p{ margin:4px 0; font-size:14px; }
+        .etq{ font-size:11px; color:#777; text-transform:uppercase; }
+      </style></head>
+      <body>
+        <h2>${vendedor.nombre_tienda}</h2>
+        <div class="codigo">Pedido: ${p.id.slice(0,8).toUpperCase()} · ${fecha}</div>
+        <div class="linea"></div>
+        <p class="etq">Producto</p>
+        <p><strong>${p.productos?.nombre || ''}</strong> (Cód. ${p.productos?.codigo || ''}) × ${p.cantidad}</p>
+        <div class="linea"></div>
+        <p class="etq">Enviar a</p>
+        <p><strong>${p.nombre_cliente}</strong></p>
+        <p>${p.telefono_cliente}</p>
+        <p>${p.direccion_cliente}</p>
+        ${p.observacion ? `<p class="etq">Observación</p><p>${p.observacion}</p>` : ''}
+      </body></html>
+    `)
+    ventana.document.close()
+    ventana.focus()
+    ventana.print()
+  }
+
   const pedidosNuevos = pedidos.filter(p => p.estado === 'nuevo').length
+
+  const pedidosFiltrados = pedidos.filter(p => {
+    const fecha = p.creado_en.slice(0,10)
+    if (filtroDesde && fecha < filtroDesde) return false
+    if (filtroHasta && fecha > filtroHasta) return false
+    return true
+  })
+
+  const resumen = pedidosFiltrados.reduce((acc, p) => {
+    if (p.estado === 'cancelado') return acc
+    acc.pedidos += 1
+    acc.unidades += p.cantidad
+    acc.ingresos += (p.precio_unitario || 0) * p.cantidad
+    return acc
+  }, { pedidos:0, unidades:0, ingresos:0 })
+
 
   function mostrarToast(m) {
     setToast(m)
@@ -523,14 +573,48 @@ function PanelVendedor({ vendedor, setVendedor }) {
 
         {vista === 'pedidos' ? (
           <>
-            <div className="section-title">Pedidos <span className="count-pill">{pedidos.length}</span></div>
-            {pedidos.length === 0 && <div className="empty">Aún no tienes pedidos.</div>}
-            {pedidos.map(p => (
+            <div className="form-card">
+              <h3>Filtrar por fecha</h3>
+              <div className="row2">
+                <div style={{flex:1}}>
+                  <label>Desde</label>
+                  <input type="date" value={filtroDesde} onChange={e=>setFiltroDesde(e.target.value)} />
+                </div>
+                <div style={{flex:1}}>
+                  <label>Hasta</label>
+                  <input type="date" value={filtroHasta} onChange={e=>setFiltroHasta(e.target.value)} />
+                </div>
+              </div>
+              {(filtroDesde || filtroHasta) && (
+                <button type="button" className="btn" style={{marginTop:8, background:'#F1EDE4'}}
+                  onClick={()=>{setFiltroDesde(''); setFiltroHasta('')}}>Quitar filtro</button>
+              )}
+            </div>
+
+            <div className="form-card" style={{display:'flex', justifyContent:'space-around', textAlign:'center'}}>
+              <div>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:18}}>{resumen.pedidos}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Pedidos</div>
+              </div>
+              <div>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:18}}>{resumen.unidades}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Unidades</div>
+              </div>
+              <div>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:18, color:'#1FAE7C'}}>Q{resumen.ingresos.toFixed(2)}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Ingresos</div>
+              </div>
+            </div>
+
+            <div className="section-title">Pedidos <span className="count-pill">{pedidosFiltrados.length}</span></div>
+            {pedidosFiltrados.length === 0 && <div className="empty">No hay pedidos en este rango.</div>}
+            {pedidosFiltrados.map(p => (
               <div className="form-card" key={p.id}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
                   <div>
                     <div style={{fontWeight:700, fontSize:13.5}}>{p.productos?.nombre} × {p.cantidad}</div>
                     <span className="codigo">{p.productos?.codigo}</span>
+                    {p.productos?.descripcion && <div style={{fontSize:11.5, color:'#57536B', marginTop:3}}>{p.productos.descripcion}</div>}
                   </div>
                   <span className="stock-badge" style={{
                     background: p.estado==='nuevo' ? '#FDE9CC' : p.estado==='confirmado' ? '#E4F0F6' : p.estado==='entregado' ? '#E4F6EF' : '#FDE3E7',
@@ -541,18 +625,27 @@ function PanelVendedor({ vendedor, setVendedor }) {
                   <div><strong>{p.nombre_cliente}</strong> · {p.telefono_cliente}</div>
                   <div>{p.direccion_cliente}</div>
                   {p.observacion && <div>Obs: {p.observacion}</div>}
-                </div>
-                {(p.estado === 'nuevo' || p.estado === 'confirmado') && (
-                  <div className="row2" style={{marginTop:12}}>
-                    {p.estado === 'nuevo' && (
-                      <button className="btn" style={{background:'#1D6FA5', color:'#fff'}} onClick={()=>cambiarEstadoPedido(p.id,'confirmado')}>Confirmar</button>
-                    )}
-                    {p.estado === 'confirmado' && (
-                      <button className="btn" style={{background:'#1FAE7C', color:'#fff'}} onClick={()=>cambiarEstadoPedido(p.id,'entregado')}>Entregado</button>
-                    )}
-                    <button className="btn" style={{background:'#F1EDE4', color:'#17162A'}} onClick={()=>cambiarEstadoPedido(p.id,'cancelado')}>Cancelar</button>
+                  <div style={{fontSize:11, marginTop:4}}>
+                    {new Date(p.creado_en).toLocaleDateString('es-GT', { day:'2-digit', month:'short', year:'numeric' })}
+                    {' · Q'}{(p.precio_unitario ? p.precio_unitario * p.cantidad : 0).toFixed(2)}
                   </div>
-                )}
+                </div>
+                <div className="row2" style={{marginTop:12}}>
+                  {(p.estado === 'nuevo' || p.estado === 'confirmado') && (
+                    <>
+                      {p.estado === 'nuevo' && (
+                        <button className="btn" style={{background:'#1D6FA5', color:'#fff'}} onClick={()=>cambiarEstadoPedido(p.id,'confirmado')}>Confirmar</button>
+                      )}
+                      {p.estado === 'confirmado' && (
+                        <button className="btn" style={{background:'#1FAE7C', color:'#fff'}} onClick={()=>cambiarEstadoPedido(p.id,'entregado')}>Entregado</button>
+                      )}
+                      <button className="btn" style={{background:'#F1EDE4', color:'#17162A'}} onClick={()=>cambiarEstadoPedido(p.id,'cancelado')}>Cancelar</button>
+                    </>
+                  )}
+                </div>
+                <button className="btn" style={{marginTop:8, background:'#17162A', color:'#fff'}} onClick={()=>imprimirGuia(p)}>
+                  🖨️ Imprimir guía
+                </button>
               </div>
             ))}
           </>
