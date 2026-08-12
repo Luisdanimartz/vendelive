@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabaseClient'
 import './App.css'
 
-const LIMITE_PLAN_GRATIS = 15
+const LIMITE_PLAN_GRATIS = 3
+const LIMITE_PLAN_BASICO = 15
 const WHATSAPP_SOPORTE = '55395493' // tu número, el mismo que usaste en Supabase de prueba — cámbialo si es otro
 const ADMIN_EMAIL = 'luismartz23@gmail.com'
 
@@ -394,7 +395,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [fotosNuevas, setFotosNuevas] = useState([]) // File[]
   const [fotosNuevasPreview, setFotosNuevasPreview] = useState([]) // string[] (object URLs)
   const [fotosExistentes, setFotosExistentes] = useState([]) // string[] (urls ya guardadas)
-  const [form, setForm] = useState({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad' })
+  const [form, setForm] = useState({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad', es_nuevo:false, en_rebaja:false, precio_rebaja:'' })
   const [toast, setToast] = useState('')
   const [saving, setSaving] = useState(false)
   const [logoNuevo, setLogoNuevo] = useState(null)
@@ -667,7 +668,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
 
   function resetForm() {
     setEditingId(null)
-    setForm({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad' })
+    setForm({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad', es_nuevo:false, en_rebaja:false, precio_rebaja:'' })
     setFotosNuevas([])
     setFotosNuevasPreview([])
     setFotosExistentes([])
@@ -675,7 +676,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
 
   function editar(p) {
     setEditingId(p.id)
-    setForm({ codigo:p.codigo, nombre:p.nombre, descripcion:p.descripcion||'', precio:p.precio, existencia:p.existencia, unidad:p.unidad||'unidad' })
+    setForm({ codigo:p.codigo, nombre:p.nombre, descripcion:p.descripcion||'', precio:p.precio, existencia:p.existencia, unidad:p.unidad||'unidad', es_nuevo:p.es_nuevo||false, en_rebaja:p.en_rebaja||false, precio_rebaja:p.precio_rebaja||'' })
     const galeria = (p.fotos && p.fotos.length > 0) ? p.fotos : (p.foto_url ? [p.foto_url] : [])
     setFotosExistentes(galeria)
     setFotosNuevas([])
@@ -688,10 +689,17 @@ function PanelVendedor({ vendedor, setVendedor }) {
     cargarProductos()
   }
 
+  function limiteDePlan(plan) {
+    if (plan === 'pro') return Infinity
+    if (plan === 'basico') return LIMITE_PLAN_BASICO
+    return LIMITE_PLAN_GRATIS
+  }
+
   async function guardar(e) {
     e.preventDefault()
-    if (!editingId && vendedor.plan !== 'pro' && productos.length >= LIMITE_PLAN_GRATIS) {
-      mostrarToast(`⚠️ Llegaste al límite de ${LIMITE_PLAN_GRATIS} productos de tu plan gratis`)
+    const limite = limiteDePlan(vendedor.plan)
+    if (!editingId && productos.length >= limite) {
+      mostrarToast(`⚠️ Llegaste al límite de ${limite} productos de tu plan`)
       return
     }
     setSaving(true)
@@ -705,6 +713,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
       }
     }
     const fotos = [...fotosExistentes, ...urlsNuevas]
+    const esPro = vendedor.plan === 'pro'
     const payload = {
       vendedor_id: vendedor.id,
       codigo: form.codigo,
@@ -714,7 +723,10 @@ function PanelVendedor({ vendedor, setVendedor }) {
       existencia: parseInt(form.existencia),
       unidad: form.unidad,
       fotos,
-      foto_url: fotos[0] || null
+      foto_url: fotos[0] || null,
+      es_nuevo: esPro ? form.es_nuevo : false,
+      en_rebaja: esPro ? form.en_rebaja : false,
+      precio_rebaja: (esPro && form.en_rebaja && form.precio_rebaja) ? parseFloat(form.precio_rebaja) : null
     }
     if (editingId) {
       await supabase.from('productos').update(payload).eq('id', editingId)
@@ -1125,6 +1137,36 @@ function PanelVendedor({ vendedor, setVendedor }) {
               <option value="hora">Hora</option>
               <option value="servicio">Servicio</option>
             </select>
+
+            <div style={{ marginTop:14, padding:12, borderRadius:12, background: vendedor.plan==='pro' ? '#FFF3D6' : '#F1EDE4' }}>
+              <div style={{ fontSize:11.5, fontWeight:700, marginBottom:8 }}>
+                🏷️ Insignias promocionales {vendedor.plan!=='pro' && <span style={{ fontWeight:400, color:'#57536B' }}>(exclusivo Plan Pro)</span>}
+              </div>
+              {vendedor.plan === 'pro' ? (
+                <>
+                  <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, fontWeight:600, cursor:'pointer', marginBottom:8 }}>
+                    <input type="checkbox" checked={form.es_nuevo} onChange={e=>setForm({...form, es_nuevo:e.target.checked})} />
+                    Marcar como "Nuevo"
+                  </label>
+                  <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, fontWeight:600, cursor:'pointer' }}>
+                    <input type="checkbox" checked={form.en_rebaja} onChange={e=>setForm({...form, en_rebaja:e.target.checked})} />
+                    Poner en "Rebaja"
+                  </label>
+                  {form.en_rebaja && (
+                    <>
+                      <label>Precio con rebaja (Q)</label>
+                      <input type="number" step="0.01" value={form.precio_rebaja} onChange={e=>setForm({...form, precio_rebaja:e.target.value})} placeholder="Menor al precio normal" />
+                    </>
+                  )}
+                </>
+              ) : (
+                <a href={linkWhatsapp(WHATSAPP_SOPORTE, `Hola, quiero pasar mi tienda "${vendedor.nombre_tienda}" al plan Pro para usar las insignias de Nuevo/Rebaja`)} target="_blank" rel="noreferrer"
+                  style={{ fontSize:11.5, fontWeight:700, color:'#B5750B', textDecoration:'underline' }}>
+                  Subite a Pro para desbloquear esto →
+                </a>
+              )}
+            </div>
+
             <button className="btn btn-primary" disabled={saving} type="submit">
               {saving ? 'Guardando…' : (editingId ? 'Actualizar producto' : 'Guardar producto')}
             </button>
@@ -1132,20 +1174,30 @@ function PanelVendedor({ vendedor, setVendedor }) {
           </form>
         </div>
 
-        <div className="form-card" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <div>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:13 }}>
-              Plan {vendedor.plan === 'pro' ? 'Pro ✨' : 'Gratis'}
-            </div>
-            <div style={{ fontSize:11, color:'#57536B', marginTop:2 }}>
-              {vendedor.plan === 'pro' ? 'Productos ilimitados' : `${productos.length} de ${LIMITE_PLAN_GRATIS} productos usados`}
+        <div className="form-card">
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:13 }}>
+                Plan {vendedor.plan === 'pro' ? 'Pro ✨' : vendedor.plan === 'basico' ? 'Básico' : 'Gratis'}
+              </div>
+              <div style={{ fontSize:11, color:'#57536B', marginTop:2 }}>
+                {vendedor.plan === 'pro' ? 'Productos ilimitados + insignias Nuevo/Rebaja' : `${productos.length} de ${limiteDePlan(vendedor.plan)} productos usados`}
+              </div>
             </div>
           </div>
           {vendedor.plan !== 'pro' && (
-            <a href={linkWhatsapp(WHATSAPP_SOPORTE, `Hola, quiero pasar mi tienda "${vendedor.nombre_tienda}" al plan Pro de VendéLive`)} target="_blank" rel="noreferrer"
-              style={{ fontSize:11, fontWeight:700, background:'#17162A', color:'#fff', padding:'7px 12px', borderRadius:999, textDecoration:'none' }}>
-              Pasar a Pro
-            </a>
+            <div className="row2" style={{ marginTop:10 }}>
+              {vendedor.plan !== 'basico' && (
+                <a href={linkWhatsapp(WHATSAPP_SOPORTE, `Hola, quiero pasar mi tienda "${vendedor.nombre_tienda}" al plan Básico de VendéLive`)} target="_blank" rel="noreferrer"
+                  className="btn" style={{ background:'#F1EDE4', color:'#17162A', textDecoration:'none', textAlign:'center' }}>
+                  Subir a Básico
+                </a>
+              )}
+              <a href={linkWhatsapp(WHATSAPP_SOPORTE, `Hola, quiero pasar mi tienda "${vendedor.nombre_tienda}" al plan Pro de VendéLive`)} target="_blank" rel="noreferrer"
+                className="btn" style={{ background:'#17162A', color:'#fff', textDecoration:'none', textAlign:'center' }}>
+                Pasar a Pro ✨
+              </a>
+            </div>
           )}
         </div>
 
@@ -1383,9 +1435,9 @@ function AdminPanel() {
                 }}>{v.estado}</span>
                 <span style={{
                   fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999,
-                  background: v.plan==='pro' ? '#FFF3D6' : '#F1EDE4',
-                  color: v.plan==='pro' ? '#B5750B' : '#57536B'
-                }}>{v.plan==='pro' ? 'PRO ✨' : 'GRATIS'}</span>
+                  background: v.plan==='pro' ? '#FFF3D6' : v.plan==='basico' ? '#E4F0F6' : '#F1EDE4',
+                  color: v.plan==='pro' ? '#B5750B' : v.plan==='basico' ? '#1D6FA5' : '#57536B'
+                }}>{v.plan==='pro' ? 'PRO ✨' : v.plan==='basico' ? 'BÁSICO' : 'GRATIS'}</span>
               </div>
             </div>
             <div style={{fontSize:11.5, color:'#57536B', marginBottom:10}}>
@@ -1399,11 +1451,13 @@ function AdminPanel() {
                   <button className="btn" style={{background: v.estado==='suspendido' ? '#D62A48' : '#F1EDE4', color: v.estado==='suspendido' ? '#fff' : '#17162A'}}
                     onClick={()=>cambiarEstado(v.id, 'suspendido')}>Suspender</button>
                 </div>
-                <div className="row2" style={{marginTop:8}}>
-                  <button className="btn" style={{background: v.plan!=='pro' ? '#17162A' : '#F1EDE4', color: v.plan!=='pro' ? '#fff' : '#17162A'}}
-                    onClick={()=>cambiarPlan(v.id, 'gratis')}>Plan Gratis</button>
-                  <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color: v.plan==='pro' ? '#17162A' : '#17162A'}}
-                    onClick={()=>cambiarPlan(v.id, 'pro')}>Plan Pro ✨</button>
+                <div style={{display:'flex', gap:6, marginTop:8}}>
+                  <button className="btn" style={{background: (!v.plan||v.plan==='gratis') ? '#17162A' : '#F1EDE4', color: (!v.plan||v.plan==='gratis') ? '#fff' : '#17162A', fontSize:11.5}}
+                    onClick={()=>cambiarPlan(v.id, 'gratis')}>Gratis</button>
+                  <button className="btn" style={{background: v.plan==='basico' ? '#1D6FA5' : '#F1EDE4', color: v.plan==='basico' ? '#fff' : '#17162A', fontSize:11.5}}
+                    onClick={()=>cambiarPlan(v.id, 'basico')}>Básico</button>
+                  <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color:'#17162A', fontSize:11.5}}
+                    onClick={()=>cambiarPlan(v.id, 'pro')}>Pro ✨</button>
                 </div>
               </>
             )}
@@ -1529,7 +1583,11 @@ function TiendaPublica({ slug }) {
   }
 
   const totalItems = carrito.reduce((n, i) => n + i.cantidad, 0)
-  const totalCarrito = carrito.reduce((n, i) => n + i.cantidad * Number(i.producto.precio), 0)
+  function precioEfectivo(p) {
+    return (p.en_rebaja && p.precio_rebaja) ? Number(p.precio_rebaja) : Number(p.precio)
+  }
+
+  const totalCarrito = carrito.reduce((n, i) => n + i.cantidad * precioEfectivo(i.producto), 0)
 
   async function confirmarCompra() {
     if (!buyer.nombre || !buyer.telefono || !buyer.direccion) {
@@ -1613,12 +1671,25 @@ function TiendaPublica({ slug }) {
                       </div>
                     )}
                     {p.existencia === 0 && <div className="agotado-tag">AGOTADO</div>}
+                    {(p.es_nuevo || p.en_rebaja) && (
+                      <div style={{ position:'absolute', top:10, left:10, display:'flex', gap:6 }}>
+                        {p.es_nuevo && <span style={{ background:'#1FAE7C', color:'#fff', fontSize:10.5, fontWeight:700, padding:'4px 10px', borderRadius:999 }}>🆕 NUEVO</span>}
+                        {p.en_rebaja && <span style={{ background:'#FF3B5C', color:'#fff', fontSize:10.5, fontWeight:700, padding:'4px 10px', borderRadius:999 }}>🔥 REBAJA</span>}
+                      </div>
+                    )}
                   </div>
                   <div className="body" style={{ padding:16, gap:8 }}>
                     <span className="codigo" style={{ fontSize:11.5 }}>{p.codigo}</span>
                     <div className="nombre" style={{ fontSize:17 }}>{p.nombre}</div>
                     {p.descripcion && <div style={{ fontSize:12.5, color:'#57536B' }}>{p.descripcion}</div>}
-                    <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio).toFixed(2)}{p.unidad && p.unidad!=='unidad' ? ` / ${p.unidad}` : ''}</span>
+                    {p.en_rebaja && p.precio_rebaja ? (
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:13, color:'#57536B', textDecoration:'line-through' }}>Q{Number(p.precio).toFixed(2)}</span>
+                        <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio_rebaja).toFixed(2)}{p.unidad && p.unidad!=='unidad' ? ` / ${p.unidad}` : ''}</span>
+                      </div>
+                    ) : (
+                      <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio).toFixed(2)}{p.unidad && p.unidad!=='unidad' ? ` / ${p.unidad}` : ''}</span>
+                    )}
                     <span className="exist" style={{ fontSize:12 }}>{p.existencia>0 ? p.existencia+' disponibles' : 'Sin existencias'}</span>
                     <button className="btn btn-live" disabled={p.existencia===0 || enCarrito >= p.existencia} onClick={()=>agregarAlCarrito(p)}>
                       <span className="dot"></span>
@@ -1682,7 +1753,7 @@ function TiendaPublica({ slug }) {
                 {item.producto.foto_url ? <img src={item.producto.foto_url} /> : <div className="noimg">sin foto</div>}
                 <div className="info">
                   <div className="nombre">{item.producto.nombre}</div>
-                  <div className="meta">Q{Number(item.producto.precio).toFixed(2)}{item.producto.unidad && item.producto.unidad!=='unidad' ? ` / ${item.producto.unidad}` : ' c/u'}</div>
+                  <div className="meta">Q{precioEfectivo(item.producto).toFixed(2)}{item.producto.unidad && item.producto.unidad!=='unidad' ? ` / ${item.producto.unidad}` : ' c/u'}{item.producto.en_rebaja && item.producto.precio_rebaja ? ' 🔥' : ''}</div>
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
                     <button onClick={()=>cambiarCantidad(item.producto.id,-1)} style={{width:24,height:24,borderRadius:7,border:'none',background:'#F1EDE4',fontWeight:700,cursor:'pointer'}}>–</button>
                     <span style={{fontWeight:700, fontSize:13}}>{item.cantidad}</span>
