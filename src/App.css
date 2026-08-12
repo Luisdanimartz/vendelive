@@ -10,24 +10,19 @@
 body{ margin:0; background:linear-gradient(180deg,#EFE9DD 0%, #F6F2E9 40%); font-family:'Inter',sans-serif; color:var(--ink); }
 .phone{ width:100%; max-width:430px; margin:20px auto; background:var(--bg); border-radius:32px; box-shadow:0 30px 60px -20px rgba(23,22,42,0.35); overflow:hidden; min-height:90vh; position:relative; }
 .hero{
-  background: linear-gradient(160deg, #1c1a30 0%, #14121f 55%, #201b38 100%);
-  padding:22px 20px 24px;
+  background:
+    radial-gradient(520px circle at 20% -15%, rgba(255,59,92,0.32), transparent 60%),
+    linear-gradient(180deg, #0F0E1A 0%, #191730 100%);
+  padding:26px 20px 26px;
   color:#fff;
   position:relative;
   overflow:hidden;
 }
-.hero::before{
-  content:'';
-  position:absolute; top:-70px; right:-50px;
-  width:220px; height:220px; border-radius:50%;
-  background: radial-gradient(circle, rgba(255,59,92,0.28) 0%, transparent 70%);
-  pointer-events:none;
-}
 .hero::after{
   content:'';
-  position:absolute; bottom:-90px; left:-40px;
-  width:190px; height:190px; border-radius:50%;
-  background: radial-gradient(circle, rgba(255,182,39,0.18) 0%, transparent 70%);
+  position:absolute; inset:0;
+  background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 22px 22px;
   pointer-events:none;
 }
 .hero > *{ position:relative; z-index:1; }

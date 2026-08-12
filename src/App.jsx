@@ -12,6 +12,12 @@ function slugify(text) {
     .replace(/(^-|-$)/g, '')
 }
 
+function linkWhatsapp(telefono, mensaje) {
+  const soloDigitos = (telefono || '').replace(/\D/g, '')
+  const numero = soloDigitos.length === 8 ? `502${soloDigitos}` : soloDigitos
+  return `https://wa.me/${numero}${mensaje ? `?text=${encodeURIComponent(mensaje)}` : ''}`
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [vendedor, setVendedor] = useState(null)
@@ -587,14 +593,14 @@ function PanelVendedor({ vendedor, setVendedor }) {
         </div>
         <div style={{textAlign:'center', marginTop:14}}>
           <Avatar nombre={vendedor.nombre_tienda} logo_url={vendedor.logo_url} size={76} />
-          <h1 style={{fontFamily:"'Space Grotesk',sans-serif", fontSize:21, fontWeight:700, marginTop:10}}>{vendedor.nombre_tienda}</h1>
-          {vendedor.frase && <p style={{fontSize:12.5, color:'#C9C4DC', marginTop:2, fontStyle:'italic'}}>{vendedor.frase}</p>}
+          <h1 style={{fontFamily:"'Space Grotesk',sans-serif", fontSize:21, fontWeight:700, marginTop:10, color:'#fff'}}>{vendedor.nombre_tienda}</h1>
+          <p style={{fontSize:14, color:'#D9D5EA', marginTop:3, fontWeight:500}}>{vendedor.frase || 'Catálogo'}</p>
           {vendedor.telefono && (
-            <a href={`tel:${vendedor.telefono}`} style={{
+            <a href={linkWhatsapp(vendedor.telefono)} target="_blank" rel="noreferrer" style={{
               display:'inline-flex', alignItems:'center', gap:6, marginTop:8,
-              background:'rgba(255,255,255,0.1)', padding:'5px 12px', borderRadius:999,
+              background:'rgba(37,211,102,0.18)', border:'1px solid rgba(37,211,102,0.4)', padding:'5px 12px', borderRadius:999,
               fontSize:12, color:'#fff', textDecoration:'none', fontWeight:600
-            }}>📞 {vendedor.telefono}</a>
+            }}>💬 WhatsApp · {vendedor.telefono}</a>
           )}
         </div>
       </header>
@@ -1054,18 +1060,14 @@ function TiendaPublica({ slug }) {
           <div style={{marginTop:14}}>
             <Avatar nombre={vendedor.nombre_tienda} logo_url={vendedor.logo_url} size={76} />
           </div>
-          <h1 style={{fontFamily:"'Space Grotesk',sans-serif", fontSize:22, fontWeight:700, marginTop:10}}>{vendedor.nombre_tienda}</h1>
-          {vendedor.frase ? (
-            <p style={{fontSize:12.5, color:'#C9C4DC', marginTop:2, fontStyle:'italic'}}>{vendedor.frase}</p>
-          ) : (
-            <p className="tagline">Catálogo en vivo</p>
-          )}
+          <h1 style={{fontFamily:"'Space Grotesk',sans-serif", fontSize:22, fontWeight:700, marginTop:10, color:'#fff'}}>{vendedor.nombre_tienda}</h1>
+          <p style={{fontSize:14.5, color:'#D9D5EA', marginTop:3, fontWeight:500}}>{vendedor.frase || 'Catálogo'}</p>
           {vendedor.telefono && (
-            <a href={`tel:${vendedor.telefono}`} style={{
+            <a href={linkWhatsapp(vendedor.telefono, `Hola, vengo de tu catálogo ${vendedor.nombre_tienda} 👋`)} target="_blank" rel="noreferrer" style={{
               display:'inline-flex', alignItems:'center', gap:6, marginTop:10,
-              background:'rgba(255,255,255,0.1)', padding:'6px 14px', borderRadius:999,
+              background:'rgba(37,211,102,0.18)', border:'1px solid rgba(37,211,102,0.4)', padding:'6px 14px', borderRadius:999,
               fontSize:12.5, color:'#fff', textDecoration:'none', fontWeight:600
-            }}>📞 Llamar · {vendedor.telefono}</a>
+            }}>💬 Escribinos por WhatsApp</a>
           )}
         </div>
       </header>
