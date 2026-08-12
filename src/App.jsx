@@ -366,8 +366,9 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [productos, setProductos] = useState([])
   const [pedidos, setPedidos] = useState([])
   const [editingId, setEditingId] = useState(null)
-  const [foto, setFoto] = useState(null)
-  const [fotoPreview, setFotoPreview] = useState(null)
+  const [fotosNuevas, setFotosNuevas] = useState([]) // File[]
+  const [fotosNuevasPreview, setFotosNuevasPreview] = useState([]) // string[] (object URLs)
+  const [fotosExistentes, setFotosExistentes] = useState([]) // string[] (urls ya guardadas)
   const [form, setForm] = useState({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad' })
   const [toast, setToast] = useState('')
   const [saving, setSaving] = useState(false)
@@ -466,15 +467,18 @@ function PanelVendedor({ vendedor, setVendedor }) {
   function resetForm() {
     setEditingId(null)
     setForm({ codigo:'', nombre:'', descripcion:'', precio:'', existencia:'', unidad:'unidad' })
-    setFoto(null)
-    setFotoPreview(null)
+    setFotosNuevas([])
+    setFotosNuevasPreview([])
+    setFotosExistentes([])
   }
 
   function editar(p) {
     setEditingId(p.id)
     setForm({ codigo:p.codigo, nombre:p.nombre, descripcion:p.descripcion||'', precio:p.precio, existencia:p.existencia, unidad:p.unidad||'unidad' })
-    setFotoPreview(p.foto_url)
-    setFoto(null)
+    const galeria = (p.fotos && p.fotos.length > 0) ? p.fotos : (p.foto_url ? [p.foto_url] : [])
+    setFotosExistentes(galeria)
+    setFotosNuevas([])
+    setFotosNuevasPreview([])
   }
 
   async function eliminar(id) {
@@ -486,15 +490,16 @@ function PanelVendedor({ vendedor, setVendedor }) {
   async function guardar(e) {
     e.preventDefault()
     setSaving(true)
-    let foto_url = fotoPreview
-    if (foto) {
-      const nombreArchivo = `${vendedor.id}/${Date.now()}-${foto.name}`
-      const { error: upErr } = await supabase.storage.from('productos').upload(nombreArchivo, foto)
+    const urlsNuevas = []
+    for (const file of fotosNuevas) {
+      const nombreArchivo = `${vendedor.id}/${Date.now()}-${Math.floor(Math.random()*10000)}-${file.name}`
+      const { error: upErr } = await supabase.storage.from('productos').upload(nombreArchivo, file)
       if (!upErr) {
         const { data } = supabase.storage.from('productos').getPublicUrl(nombreArchivo)
-        foto_url = data.publicUrl
+        urlsNuevas.push(data.publicUrl)
       }
     }
+    const fotos = [...fotosExistentes, ...urlsNuevas]
     const payload = {
       vendedor_id: vendedor.id,
       codigo: form.codigo,
@@ -503,7 +508,8 @@ function PanelVendedor({ vendedor, setVendedor }) {
       precio: parseFloat(form.precio),
       existencia: parseInt(form.existencia),
       unidad: form.unidad,
-      foto_url
+      fotos,
+      foto_url: fotos[0] || null
     }
     if (editingId) {
       await supabase.from('productos').update(payload).eq('id', editingId)
@@ -517,13 +523,21 @@ function PanelVendedor({ vendedor, setVendedor }) {
     setSaving(false)
   }
 
-  function onFotoChange(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    setFoto(file)
-    const reader = new FileReader()
-    reader.onload = ev => setFotoPreview(ev.target.result)
-    reader.readAsDataURL(file)
+  function onFotosChange(e) {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setFotosNuevas(f => [...f, ...files])
+    setFotosNuevasPreview(f => [...f, ...files.map(file => URL.createObjectURL(file))])
+    e.target.value = ''
+  }
+
+  function quitarFotoExistente(url) {
+    setFotosExistentes(f => f.filter(u => u !== url))
+  }
+
+  function quitarFotoNueva(idx) {
+    setFotosNuevas(f => f.filter((_, i) => i !== idx))
+    setFotosNuevasPreview(f => f.filter((_, i) => i !== idx))
   }
 
   function onLogoNuevoFile(file) {
@@ -692,10 +706,33 @@ function PanelVendedor({ vendedor, setVendedor }) {
 
         <div className="form-card">
           <h3>{editingId ? 'Editar producto' : 'Agregar producto'}</h3>
-          <div className="photo-upload">
-            {fotoPreview ? <img src={fotoPreview} /> : <span className="hint">📷 Tocá para subir foto</span>}
-            <input type="file" accept="image/*" onChange={onFotoChange} />
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+            {fotosExistentes.map(url => (
+              <div key={url} style={{ position:'relative', width:72, height:72, borderRadius:12, overflow:'hidden' }}>
+                <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <button type="button" onClick={()=>quitarFotoExistente(url)} style={{
+                  position:'absolute', top:2, right:2, width:20, height:20, borderRadius:'50%', border:'none',
+                  background:'rgba(23,22,42,0.7)', color:'#fff', fontSize:11, cursor:'pointer', lineHeight:1
+                }}>✕</button>
+              </div>
+            ))}
+            {fotosNuevasPreview.map((url, i) => (
+              <div key={i} style={{ position:'relative', width:72, height:72, borderRadius:12, overflow:'hidden' }}>
+                <img src={url} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <button type="button" onClick={()=>quitarFotoNueva(i)} style={{
+                  position:'absolute', top:2, right:2, width:20, height:20, borderRadius:'50%', border:'none',
+                  background:'rgba(23,22,42,0.7)', color:'#fff', fontSize:11, cursor:'pointer', lineHeight:1
+                }}>✕</button>
+              </div>
+            ))}
+            <div className="photo-upload" style={{ width:72, height:72, marginBottom:0 }}>
+              <span className="hint" style={{ fontSize:10, textAlign:'center' }}>📷 Agregar<br/>foto</span>
+              <input type="file" accept="image/*" multiple onChange={onFotosChange} />
+            </div>
           </div>
+          <p style={{ fontSize:11, color:'#57536B', marginTop:-6, marginBottom:6 }}>
+            Podés subir una sola foto, o varias — tus compradores podrán verlas todas al ampliar.
+          </p>
           <form onSubmit={guardar}>
             <div className="row2">
               <div style={{flex:1}}>
@@ -896,7 +933,7 @@ function TiendaPublica({ slug }) {
   const [indice, setIndice] = useState(0)
   const [carrito, setCarrito] = useState([]) // [{producto, cantidad}]
   const [vistaCarrito, setVistaCarrito] = useState(null) // null | 'carrito' | 'datos'
-  const [zoomFoto, setZoomFoto] = useState(null)
+  const [zoomGaleria, setZoomGaleria] = useState(null) // { fotos: string[], index: number } | null
   const [buyer, setBuyer] = useState({ nombre:'', telefono:'', direccion:'', observacion:'' })
   const [toast, setToast] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -1003,11 +1040,15 @@ function TiendaPublica({ slug }) {
             <div>
               <div style={{ position:'relative' }}>
                 <div className="pcard" style={{ width:'100%' }}>
-                  <div className="imgwrap" style={{ height:260, cursor: p.foto_url ? 'zoom-in' : 'default' }} onClick={()=>p.foto_url && setZoomFoto(p.foto_url)}>
+                  <div className="imgwrap" style={{ height:260, cursor: p.foto_url ? 'zoom-in' : 'default' }}
+                    onClick={()=>{
+                      const galeria = (p.fotos && p.fotos.length > 0) ? p.fotos : (p.foto_url ? [p.foto_url] : [])
+                      if (galeria.length > 0) setZoomGaleria({ fotos: galeria, index: 0 })
+                    }}>
                     {p.foto_url && <img src={p.foto_url} />}
                     {p.foto_url && (
                       <div style={{ position:'absolute', bottom:8, right:8, background:'rgba(23,22,42,0.6)', color:'#fff', fontSize:10.5, padding:'3px 8px', borderRadius:999, fontWeight:600 }}>
-                        🔍 Toca para ampliar
+                        🔍 {p.fotos && p.fotos.length > 1 ? `Ver ${p.fotos.length} fotos` : 'Toca para ampliar'}
                       </div>
                     )}
                     {p.existencia === 0 && <div className="agotado-tag">AGOTADO</div>}
@@ -1123,18 +1164,49 @@ function TiendaPublica({ slug }) {
         </div>
       )}
 
-      {zoomFoto && (
-        <div onClick={()=>setZoomFoto(null)} style={{
-          position:'fixed', inset:0, background:'rgba(10,9,20,0.92)', zIndex:50,
-          display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out', padding:20
-        }}>
-          <img src={zoomFoto} style={{ maxWidth:'100%', maxHeight:'100%', borderRadius:12, objectFit:'contain' }} />
-          <button onClick={()=>setZoomFoto(null)} aria-label="Cerrar" style={{
-            position:'absolute', top:18, right:18, width:36, height:36, borderRadius:'50%',
-            border:'none', background:'rgba(255,255,255,0.15)', color:'#fff', fontSize:18, cursor:'pointer'
-          }}>✕</button>
-        </div>
-      )}
+      {zoomGaleria && (() => {
+        const { fotos, index } = zoomGaleria
+        const anterior = e => { e.stopPropagation(); setZoomGaleria(z => ({ ...z, index: (z.index - 1 + fotos.length) % fotos.length })) }
+        const siguiente = e => { e.stopPropagation(); setZoomGaleria(z => ({ ...z, index: (z.index + 1) % fotos.length })) }
+        return (
+          <div onClick={()=>setZoomGaleria(null)} style={{
+            position:'fixed', inset:0, background:'rgba(10,9,20,0.92)', zIndex:50,
+            display:'flex', alignItems:'center', justifyContent:'center', cursor:'zoom-out', padding:20
+          }}>
+            <img src={fotos[index]} style={{ maxWidth:'100%', maxHeight:'100%', borderRadius:12, objectFit:'contain' }} />
+            <button onClick={()=>setZoomGaleria(null)} aria-label="Cerrar" style={{
+              position:'absolute', top:18, right:18, width:36, height:36, borderRadius:'50%',
+              border:'none', background:'rgba(255,255,255,0.15)', color:'#fff', fontSize:18, cursor:'pointer'
+            }}>✕</button>
+
+            {fotos.length > 1 && (
+              <>
+                <button onClick={anterior} aria-label="Foto anterior" style={{
+                  position:'absolute', left:14, top:'50%', transform:'translateY(-50%)',
+                  width:42, height:42, borderRadius:'50%', border:'none', cursor:'pointer',
+                  background:'rgba(255,255,255,0.15)', color:'#fff', fontSize:20
+                }}>‹</button>
+                <button onClick={siguiente} aria-label="Foto siguiente" style={{
+                  position:'absolute', right:14, top:'50%', transform:'translateY(-50%)',
+                  width:42, height:42, borderRadius:'50%', border:'none', cursor:'pointer',
+                  background:'rgba(255,255,255,0.15)', color:'#fff', fontSize:20
+                }}>›</button>
+                <div onClick={e=>e.stopPropagation()} style={{
+                  position:'absolute', bottom:22, left:'50%', transform:'translateX(-50%)',
+                  display:'flex', gap:6
+                }}>
+                  {fotos.map((_, i) => (
+                    <div key={i} onClick={()=>setZoomGaleria(z=>({...z, index:i}))} style={{
+                      width: i===index ? 16 : 6, height:6, borderRadius:999, cursor:'pointer',
+                      background: i===index ? '#FF3B5C' : 'rgba(255,255,255,0.4)', transition:'width 0.2s'
+                    }} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
       <div className={`toast ${toast?'show':''}`}>{toast}</div>
     </div>
   )
