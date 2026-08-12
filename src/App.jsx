@@ -402,7 +402,7 @@ function PanelVendedor({ vendedor, setVendedor }) {
       .order('creado_en', { ascending:false })
     setPedidos(data || [])
   }
-  useEffect(() => { if (vista === 'pedidos') cargarPedidos() }, [vista])
+  useEffect(() => { if (vista === 'pedidos' || vista === 'analisis') cargarPedidos() }, [vista])
 
   async function cambiarEstadoPedido(id, nuevoEstado) {
     await supabase.from('pedidos').update({ estado: nuevoEstado }).eq('id', id)
@@ -466,6 +466,44 @@ function PanelVendedor({ vendedor, setVendedor }) {
     acc.ingresos += (p.precio_unitario || 0) * p.cantidad
     return acc
   }, { pedidos:0, unidades:0, ingresos:0 })
+
+  const pedidosValidos = pedidosFiltrados.filter(p => p.estado !== 'cancelado')
+
+  const clientesUnicos = new Set(pedidosValidos.map(p => p.telefono_cliente)).size
+
+  const topProductosMap = {}
+  pedidosValidos.forEach(p => {
+    const nombre = p.productos?.nombre || 'Producto eliminado'
+    if (!topProductosMap[nombre]) topProductosMap[nombre] = { unidades:0, ingresos:0 }
+    topProductosMap[nombre].unidades += p.cantidad
+    topProductosMap[nombre].ingresos += (p.precio_unitario || 0) * p.cantidad
+  })
+  const topProductos = Object.entries(topProductosMap)
+    .map(([nombre, v]) => ({ nombre, ...v }))
+    .sort((a,b) => b.ingresos - a.ingresos)
+    .slice(0, 5)
+  const maxIngresoTop = Math.max(1, ...topProductos.map(p => p.ingresos))
+
+  const coloresEstado = { nuevo:'#F5A623', confirmado:'#1D6FA5', entregado:'#1FAE7C', cancelado:'#D62A48' }
+  const estadosCount = { nuevo:0, confirmado:0, entregado:0, cancelado:0 }
+  pedidosFiltrados.forEach(p => { estadosCount[p.estado] = (estadosCount[p.estado]||0) + 1 })
+  const totalEstados = Object.values(estadosCount).reduce((a,b)=>a+b,0) || 1
+  let acumulado = 0
+  const gradientePartes = Object.entries(estadosCount).map(([estado, count]) => {
+    const inicio = (acumulado / totalEstados) * 100
+    acumulado += count
+    const fin = (acumulado / totalEstados) * 100
+    return `${coloresEstado[estado]} ${inicio}% ${fin}%`
+  })
+  const donutEstados = `conic-gradient(${gradientePartes.join(', ')})`
+
+  const ventasPorDiaMap = {}
+  pedidosValidos.forEach(p => {
+    const dia = p.creado_en.slice(0,10)
+    ventasPorDiaMap[dia] = (ventasPorDiaMap[dia] || 0) + (p.precio_unitario || 0) * p.cantidad
+  })
+  const ventasPorDia = Object.entries(ventasPorDiaMap).sort((a,b)=>a[0].localeCompare(b[0])).slice(-10)
+  const maxVentaDia = Math.max(1, ...ventasPorDia.map(([,v])=>v))
 
 
   function mostrarToast(m) {
@@ -620,6 +658,12 @@ function PanelVendedor({ vendedor, setVendedor }) {
           }}>
             Pedidos{pedidosNuevos > 0 && <span style={{marginLeft:6, background:'#FF3B5C', color:'#fff', fontSize:10, padding:'1px 6px', borderRadius:999}}>{pedidosNuevos}</span>}
           </div>
+          <div onClick={()=>setVista('analisis')} style={{
+            flex:1, textAlign:'center', padding:'9px 6px', fontFamily:"'Space Grotesk',sans-serif", fontWeight:700,
+            fontSize:12.5, borderRadius:11, cursor:'pointer',
+            background: vista==='analisis' ? '#17162A' : 'transparent',
+            color: vista==='analisis' ? '#fff' : '#57536B'
+          }}>📊 Análisis</div>
         </div>
 
         {vista === 'pedidos' ? (
@@ -706,6 +750,75 @@ function PanelVendedor({ vendedor, setVendedor }) {
                 </button>
               </div>
             ))}
+          </>
+        ) : vista === 'analisis' ? (
+          <>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+              <div className="form-card" style={{ textAlign:'center', margin:0 }}>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20, color:'#1FAE7C'}}>Q{resumen.ingresos.toFixed(2)}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Ventas totales</div>
+              </div>
+              <div className="form-card" style={{ textAlign:'center', margin:0 }}>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20}}>{resumen.pedidos}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Pedidos</div>
+              </div>
+              <div className="form-card" style={{ textAlign:'center', margin:0 }}>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20}}>{resumen.unidades}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Unidades vendidas</div>
+              </div>
+              <div className="form-card" style={{ textAlign:'center', margin:0 }}>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20}}>{clientesUnicos}</div>
+                <div style={{fontSize:11, color:'#57536B'}}>Clientes distintos</div>
+              </div>
+            </div>
+
+            <div className="form-card">
+              <h3>Top 5 productos más vendidos</h3>
+              {topProductos.length === 0 && <div className="empty" style={{padding:'20px 0'}}>Sin ventas todavía en este rango.</div>}
+              {topProductos.map((p, i) => (
+                <div key={p.nombre} style={{ position:'relative', marginBottom:8, borderRadius:10, overflow:'hidden', background:'#F1EDE4' }}>
+                  <div style={{ position:'absolute', inset:0, width:`${(p.ingresos/maxIngresoTop)*100}%`, background:'rgba(255,59,92,0.16)' }} />
+                  <div style={{ position:'relative', display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px' }}>
+                    <span style={{ fontSize:12.5, fontWeight:600 }}>#{i+1} {p.nombre}</span>
+                    <span style={{ fontSize:12, fontWeight:700, whiteSpace:'nowrap', marginLeft:8 }}>Q{p.ingresos.toFixed(2)} · {p.unidades}u</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="form-card" style={{ display:'flex', alignItems:'center', gap:16 }}>
+              <div style={{ width:96, height:96, borderRadius:'50%', background: donutEstados, flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <h3 style={{marginBottom:8}}>Pedidos por estado</h3>
+                {Object.entries(estadosCount).map(([estado, count]) => (
+                  <div key={estado} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, marginBottom:3 }}>
+                    <span style={{ width:9, height:9, borderRadius:'50%', background:coloresEstado[estado], display:'inline-block' }} />
+                    <span style={{ textTransform:'capitalize', flex:1 }}>{estado}</span>
+                    <span style={{ fontWeight:700 }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-card">
+              <h3>Ventas por día</h3>
+              {ventasPorDia.length === 0 && <div className="empty" style={{padding:'20px 0'}}>Sin ventas todavía en este rango.</div>}
+              {ventasPorDia.length > 0 && (
+                <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:120, marginTop:10 }}>
+                  {ventasPorDia.map(([dia, monto]) => (
+                    <div key={dia} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                      <div style={{ fontSize:9, color:'#57536B' }}>{monto>0 ? `Q${Math.round(monto)}` : ''}</div>
+                      <div style={{
+                        width:'100%', borderRadius:'5px 5px 0 0',
+                        height: Math.max(4, (monto/maxVentaDia)*80),
+                        background: '#FF3B5C'
+                      }} />
+                      <div style={{ fontSize:8.5, color:'#57536B' }}>{new Date(dia+'T00:00:00').toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit'})}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         ) : (
         <>
