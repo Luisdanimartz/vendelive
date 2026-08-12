@@ -362,7 +362,9 @@ function CrearTienda({ userId, correo, onCreated }) {
 // PANEL DEL VENDEDOR
 // ============================================
 function PanelVendedor({ vendedor, setVendedor }) {
+  const [vista, setVista] = useState('productos') // productos | pedidos
   const [productos, setProductos] = useState([])
+  const [pedidos, setPedidos] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [foto, setFoto] = useState(null)
   const [fotoPreview, setFotoPreview] = useState(null)
@@ -378,6 +380,23 @@ function PanelVendedor({ vendedor, setVendedor }) {
     setProductos(data || [])
   }
   useEffect(() => { cargarProductos() }, [])
+
+  async function cargarPedidos() {
+    const { data } = await supabase
+      .from('pedidos')
+      .select('*, productos(nombre, codigo)')
+      .eq('vendedor_id', vendedor.id)
+      .order('creado_en', { ascending:false })
+    setPedidos(data || [])
+  }
+  useEffect(() => { if (vista === 'pedidos') cargarPedidos() }, [vista])
+
+  async function cambiarEstadoPedido(id, nuevoEstado) {
+    await supabase.from('pedidos').update({ estado: nuevoEstado }).eq('id', id)
+    cargarPedidos()
+  }
+
+  const pedidosNuevos = pedidos.filter(p => p.estado === 'nuevo').length
 
   function mostrarToast(m) {
     setToast(m)
@@ -485,6 +504,60 @@ function PanelVendedor({ vendedor, setVendedor }) {
         </p>
       </header>
       <main>
+        <div style={{display:'flex', gap:8, marginBottom:16, background:'#F1EDE4', padding:4, borderRadius:14}}>
+          <div onClick={()=>setVista('productos')} style={{
+            flex:1, textAlign:'center', padding:'9px 6px', fontFamily:"'Space Grotesk',sans-serif", fontWeight:700,
+            fontSize:12.5, borderRadius:11, cursor:'pointer',
+            background: vista==='productos' ? '#17162A' : 'transparent',
+            color: vista==='productos' ? '#fff' : '#57536B'
+          }}>Productos</div>
+          <div onClick={()=>setVista('pedidos')} style={{
+            flex:1, textAlign:'center', padding:'9px 6px', fontFamily:"'Space Grotesk',sans-serif", fontWeight:700,
+            fontSize:12.5, borderRadius:11, cursor:'pointer', position:'relative',
+            background: vista==='pedidos' ? '#17162A' : 'transparent',
+            color: vista==='pedidos' ? '#fff' : '#57536B'
+          }}>
+            Pedidos{pedidosNuevos > 0 && <span style={{marginLeft:6, background:'#FF3B5C', color:'#fff', fontSize:10, padding:'1px 6px', borderRadius:999}}>{pedidosNuevos}</span>}
+          </div>
+        </div>
+
+        {vista === 'pedidos' ? (
+          <>
+            <div className="section-title">Pedidos <span className="count-pill">{pedidos.length}</span></div>
+            {pedidos.length === 0 && <div className="empty">Aún no tienes pedidos.</div>}
+            {pedidos.map(p => (
+              <div className="form-card" key={p.id}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
+                  <div>
+                    <div style={{fontWeight:700, fontSize:13.5}}>{p.productos?.nombre} × {p.cantidad}</div>
+                    <span className="codigo">{p.productos?.codigo}</span>
+                  </div>
+                  <span className="stock-badge" style={{
+                    background: p.estado==='nuevo' ? '#FDE9CC' : p.estado==='confirmado' ? '#E4F0F6' : p.estado==='entregado' ? '#E4F6EF' : '#FDE3E7',
+                    color: p.estado==='nuevo' ? '#B5750B' : p.estado==='confirmado' ? '#1D6FA5' : p.estado==='entregado' ? '#1FAE7C' : '#D62A48'
+                  }}>{p.estado}</span>
+                </div>
+                <div style={{fontSize:12, color:'#57536B', lineHeight:1.6}}>
+                  <div><strong>{p.nombre_cliente}</strong> · {p.telefono_cliente}</div>
+                  <div>{p.direccion_cliente}</div>
+                  {p.observacion && <div>Obs: {p.observacion}</div>}
+                </div>
+                {(p.estado === 'nuevo' || p.estado === 'confirmado') && (
+                  <div className="row2" style={{marginTop:12}}>
+                    {p.estado === 'nuevo' && (
+                      <button className="btn" style={{background:'#1D6FA5', color:'#fff'}} onClick={()=>cambiarEstadoPedido(p.id,'confirmado')}>Confirmar</button>
+                    )}
+                    {p.estado === 'confirmado' && (
+                      <button className="btn" style={{background:'#1FAE7C', color:'#fff'}} onClick={()=>cambiarEstadoPedido(p.id,'entregado')}>Entregado</button>
+                    )}
+                    <button className="btn" style={{background:'#F1EDE4', color:'#17162A'}} onClick={()=>cambiarEstadoPedido(p.id,'cancelado')}>Cancelar</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </>
+        ) : (
+        <>
         <div className="form-card">
           <h3>Tu link de tienda</h3>
           <p style={{fontSize:12.5, color:'#57536B', wordBreak:'break-all'}}>{link}</p>
@@ -553,6 +626,8 @@ function PanelVendedor({ vendedor, setVendedor }) {
             <button className="icon-btn" onClick={()=>eliminar(p.id)}>🗑️</button>
           </div>
         ))}
+        </>
+        )}
       </main>
       <div className={`toast ${toast?'show':''}`}>{toast}</div>
     </div>
