@@ -405,14 +405,14 @@ function PanelVendedor({ vendedor, setVendedor }) {
     ventana.document.write(`
       <html><head><title>Guía ${p.id.slice(0,8).toUpperCase()}</title>
       <style>
-        @page{ size:80mm 100mm; margin:4mm; }
+        @page{ size:80mm 110mm; margin:5mm; }
         *{ box-sizing:border-box; }
-        body{ font-family: Arial, sans-serif; padding:0; margin:0; color:#111; width:72mm; }
-        h2{ margin:0 0 2px; font-size:15px; }
-        .codigo{ font-family: monospace; font-size:10.5px; color:#555; margin-bottom:8px; }
-        .linea{ border-top:1px dashed #999; margin:7px 0; }
-        p{ margin:3px 0; font-size:12.5px; }
-        .etq{ font-size:9.5px; color:#777; text-transform:uppercase; }
+        body{ font-family: Arial, sans-serif; padding:0; margin:0; color:#111; width:70mm; line-height:1.5; }
+        h2{ margin:0 0 4px; font-size:16px; }
+        .codigo{ font-family: monospace; font-size:11px; color:#555; margin-bottom:12px; }
+        .linea{ border-top:1px dashed #999; margin:12px 0; }
+        p{ margin:5px 0; font-size:13.5px; }
+        .etq{ font-size:10px; color:#777; text-transform:uppercase; letter-spacing:0.04em; margin-top:10px; }
       </style></head>
       <body>
         <h2>${vendedor.nombre_tienda}</h2>
@@ -881,8 +881,8 @@ function TiendaPublica({ slug }) {
   const [vendedor, setVendedor] = useState(undefined)
   const [productos, setProductos] = useState([])
   const [indice, setIndice] = useState(0)
-  const [buyProduct, setBuyProduct] = useState(null)
-  const [qty, setQty] = useState(1)
+  const [carrito, setCarrito] = useState([]) // [{producto, cantidad}]
+  const [vistaCarrito, setVistaCarrito] = useState(null) // null | 'carrito' | 'datos'
   const [buyer, setBuyer] = useState({ nombre:'', telefono:'', direccion:'', observacion:'' })
   const [toast, setToast] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -904,29 +904,64 @@ function TiendaPublica({ slug }) {
 
   function mostrarToast(m) { setToast(m); setTimeout(()=>setToast(''), 2500) }
 
-  function abrirCompra(p) {
-    setBuyProduct(p)
-    setQty(1)
-    setBuyer({ nombre:'', telefono:'', direccion:'', observacion:'' })
+  function cantidadEnCarrito(id) {
+    const item = carrito.find(c => c.producto.id === id)
+    return item ? item.cantidad : 0
   }
+
+  function agregarAlCarrito(p) {
+    const yaEnCarrito = cantidadEnCarrito(p.id)
+    if (yaEnCarrito >= p.existencia) { mostrarToast('⚠️ No hay más existencia de este producto'); return }
+    setCarrito(c => {
+      const existe = c.find(item => item.producto.id === p.id)
+      if (existe) return c.map(item => item.producto.id === p.id ? { ...item, cantidad: item.cantidad + 1 } : item)
+      return [...c, { producto: p, cantidad: 1 }]
+    })
+    mostrarToast(`${p.nombre} agregado al carrito`)
+  }
+
+  function cambiarCantidad(id, delta) {
+    setCarrito(c => c.map(item => {
+      if (item.producto.id !== id) return item
+      const nueva = Math.min(item.producto.existencia, Math.max(1, item.cantidad + delta))
+      return { ...item, cantidad: nueva }
+    }))
+  }
+
+  function quitarDelCarrito(id) {
+    setCarrito(c => c.filter(item => item.producto.id !== id))
+  }
+
+  const totalItems = carrito.reduce((n, i) => n + i.cantidad, 0)
+  const totalCarrito = carrito.reduce((n, i) => n + i.cantidad * Number(i.producto.precio), 0)
 
   async function confirmarCompra() {
     if (!buyer.nombre || !buyer.telefono || !buyer.direccion) {
       mostrarToast('⚠️ Completá nombre, teléfono y dirección'); return
     }
     setConfirming(true)
-    const { error } = await supabase.rpc('comprar_producto', {
-      p_producto_id: buyProduct.id,
-      p_cantidad: qty,
-      p_nombre: buyer.nombre,
-      p_telefono: buyer.telefono,
-      p_direccion: buyer.direccion,
-      p_observacion: buyer.observacion
-    })
+    const grupoId = crypto.randomUUID()
+    for (const item of carrito) {
+      const { error } = await supabase.rpc('comprar_producto', {
+        p_producto_id: item.producto.id,
+        p_cantidad: item.cantidad,
+        p_nombre: buyer.nombre,
+        p_telefono: buyer.telefono,
+        p_direccion: buyer.direccion,
+        p_observacion: buyer.observacion,
+        p_grupo_pedido: grupoId
+      })
+      if (error) {
+        setConfirming(false)
+        mostrarToast('⚠️ ' + error.message)
+        cargarProductos()
+        return
+      }
+    }
     setConfirming(false)
-    if (error) { mostrarToast('⚠️ ' + error.message); return }
-    mostrarToast(`Pedido confirmado — ${buyProduct.nombre} x${qty}`)
-    setBuyProduct(null)
+    mostrarToast(`Pedido confirmado — ${totalItems} producto(s)`)
+    setCarrito([])
+    setVistaCarrito(null)
     cargarProductos()
   }
 
@@ -947,6 +982,7 @@ function TiendaPublica({ slug }) {
         {productos.length === 0 && <div className="empty">Todavía no hay productos.</div>}
         {productos.length > 0 && (() => {
           const p = productos[indice]
+          const enCarrito = cantidadEnCarrito(p.id)
           const irAnterior = () => setIndice(i => (i - 1 + productos.length) % productos.length)
           const irSiguiente = () => setIndice(i => (i + 1) % productos.length)
           return (
@@ -963,8 +999,9 @@ function TiendaPublica({ slug }) {
                     {p.descripcion && <div style={{ fontSize:12.5, color:'#57536B' }}>{p.descripcion}</div>}
                     <span className="precio" style={{ fontSize:16, padding:'4px 12px' }}>Q{Number(p.precio).toFixed(2)}</span>
                     <span className="exist" style={{ fontSize:12 }}>{p.existencia>0 ? p.existencia+' disponibles' : 'Sin existencias'}</span>
-                    <button className="btn btn-live" disabled={p.existencia===0} onClick={()=>abrirCompra(p)}>
-                      <span className="dot"></span>{p.existencia===0?'Agotado':'Comprar'}
+                    <button className="btn btn-live" disabled={p.existencia===0 || enCarrito >= p.existencia} onClick={()=>agregarAlCarrito(p)}>
+                      <span className="dot"></span>
+                      {p.existencia===0 ? 'Agotado' : enCarrito > 0 ? `En el carrito (${enCarrito}) · Agregar otro` : 'Agregar al carrito'}
                     </button>
                   </div>
                 </div>
@@ -1005,19 +1042,53 @@ function TiendaPublica({ slug }) {
         })()}
       </main>
 
-      {buyProduct && (
-        <div className="overlay active" onClick={e=>{ if(e.target.className.includes('overlay')) setBuyProduct(null) }}>
+      {totalItems > 0 && !vistaCarrito && (
+        <div style={{ position:'sticky', bottom:14, display:'flex', justifyContent:'center', padding:'0 20px' }}>
+          <button className="btn btn-live" style={{ width:'100%', maxWidth:390, boxShadow:'0 10px 25px rgba(255,59,92,0.35)' }}
+            onClick={()=>setVistaCarrito('carrito')}>
+            🛒 Ver carrito ({totalItems}) · Q{totalCarrito.toFixed(2)}
+          </button>
+        </div>
+      )}
+
+      {vistaCarrito === 'carrito' && (
+        <div className="overlay active" onClick={e=>{ if(e.target.className.includes('overlay')) setVistaCarrito(null) }}>
           <div className="sheet">
-            <h3>{buyProduct.nombre}</h3>
-            <div className="sub">Q{Number(buyProduct.precio).toFixed(2)} · Código {buyProduct.codigo}</div>
-            <div className="qty-row">
-              <span style={{fontSize:12.5, fontWeight:600}}>Cantidad</span>
-              <div style={{display:'flex', alignItems:'center', gap:10}}>
-                <button onClick={()=>setQty(q=>Math.max(1,q-1))}>–</button>
-                <span style={{fontWeight:700}}>{qty}</span>
-                <button onClick={()=>setQty(q=>Math.min(buyProduct.existencia,q+1))}>+</button>
+            <h3>Tu carrito</h3>
+            <div className="sub">{totalItems} producto(s)</div>
+            {carrito.map(item => (
+              <div key={item.producto.id} className="vcard">
+                {item.producto.foto_url ? <img src={item.producto.foto_url} /> : <div className="noimg">sin foto</div>}
+                <div className="info">
+                  <div className="nombre">{item.producto.nombre}</div>
+                  <div className="meta">Q{Number(item.producto.precio).toFixed(2)} c/u</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
+                    <button onClick={()=>cambiarCantidad(item.producto.id,-1)} style={{width:24,height:24,borderRadius:7,border:'none',background:'#F1EDE4',fontWeight:700,cursor:'pointer'}}>–</button>
+                    <span style={{fontWeight:700, fontSize:13}}>{item.cantidad}</span>
+                    <button onClick={()=>cambiarCantidad(item.producto.id,1)} style={{width:24,height:24,borderRadius:7,border:'none',background:'#F1EDE4',fontWeight:700,cursor:'pointer'}}>+</button>
+                  </div>
+                </div>
+                <button className="icon-btn" onClick={()=>quitarDelCarrito(item.producto.id)}>🗑️</button>
               </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'space-between', marginTop:10, fontWeight:700, fontFamily:"'Space Grotesk',sans-serif" }}>
+              <span>Total</span>
+              <span>Q{totalCarrito.toFixed(2)}</span>
             </div>
+            <button className="btn btn-live" onClick={()=>setVistaCarrito('datos')}>
+              <span className="dot"></span>Continuar con mis datos
+            </button>
+          </div>
+        </div>
+      )}
+
+      {vistaCarrito === 'datos' && (
+        <div className="overlay active" onClick={e=>{ if(e.target.className.includes('overlay')) setVistaCarrito(null) }}>
+          <div className="sheet">
+            <p style={{fontSize:12, color:'#FF3B5C', fontWeight:600, cursor:'pointer', marginBottom:4}}
+              onClick={()=>setVistaCarrito('carrito')}>‹ Volver al carrito</p>
+            <h3>Tus datos de envío</h3>
+            <div className="sub">{totalItems} producto(s) · Q{totalCarrito.toFixed(2)}</div>
             <label>Nombre completo</label>
             <input type="text" value={buyer.nombre} onChange={e=>setBuyer({...buyer, nombre:e.target.value})} />
             <label>Teléfono</label>
