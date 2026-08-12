@@ -1098,6 +1098,8 @@ function AdminPanel() {
   const [msg, setMsg] = useState('')
   const [entrando, setEntrando] = useState(false)
   const [vendedores, setVendedores] = useState([])
+  const [busquedaAdmin, setBusquedaAdmin] = useState('')
+  const [filtroEstadoAdmin, setFiltroEstadoAdmin] = useState('todos')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1141,6 +1143,24 @@ function AdminPanel() {
   async function cambiarPlan(id, nuevoPlan) {
     await supabase.from('vendedores').update({ plan: nuevoPlan }).eq('id', id)
     cargar()
+  }
+
+  const vendedoresFiltrados = vendedores.filter(v => {
+    if (filtroEstadoAdmin !== 'todos' && v.estado !== filtroEstadoAdmin) return false
+    if (busquedaAdmin) {
+      const q = busquedaAdmin.toLowerCase()
+      const enNombre = v.nombre_tienda?.toLowerCase().includes(q)
+      const enCorreo = v.correo?.toLowerCase().includes(q)
+      const enSlug = v.slug?.toLowerCase().includes(q)
+      if (!enNombre && !enCorreo && !enSlug) return false
+    }
+    return true
+  })
+
+  const contadorEstados = {
+    pendiente: vendedores.filter(v=>v.estado==='pendiente').length,
+    activo: vendedores.filter(v=>v.estado==='activo').length,
+    suspendido: vendedores.filter(v=>v.estado==='suspendido').length,
   }
 
   if (loading) return <PantallaCarga />
@@ -1195,14 +1215,46 @@ function AdminPanel() {
         </p>
       </header>
       <main>
-        <div className="section-title">Tiendas registradas <span className="count-pill">{vendedores.length}</span></div>
-        {vendedores.map(v => (
+        <div className="form-card">
+          <input type="text" value={busquedaAdmin} onChange={e=>setBusquedaAdmin(e.target.value)}
+            placeholder="Buscar por tienda, correo o link" />
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
+            {[
+              ['todos', `Todos (${vendedores.length})`],
+              ['pendiente', `Pendientes (${contadorEstados.pendiente})`],
+              ['activo', `Activos (${contadorEstados.activo})`],
+              ['suspendido', `Suspendidos (${contadorEstados.suspendido})`],
+            ].map(([key,label]) => (
+              <button key={key} type="button" onClick={()=>setFiltroEstadoAdmin(key)} style={{
+                fontSize:11, fontWeight:600, padding:'6px 10px', borderRadius:999, cursor:'pointer',
+                border: filtroEstadoAdmin===key ? '1px solid #17162A' : '1px solid #EAE4D8',
+                background: filtroEstadoAdmin===key ? '#17162A' : '#F1EDE4',
+                color: filtroEstadoAdmin===key ? '#fff' : '#17162A'
+              }}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="section-title">Tiendas <span className="count-pill">{vendedoresFiltrados.length}</span></div>
+        {vendedoresFiltrados.map(v => (
           <div className="form-card" key={v.id}>
             <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:8}}>
               <Avatar nombre={v.nombre_tienda} logo_url={v.logo_url} size={36} />
-              <div>
+              <div style={{flex:1}}>
                 <div style={{fontWeight:700, fontSize:14}}>{v.nombre_tienda}</div>
                 <div style={{fontSize:11.5, color:'#57536B'}}>{v.correo}</div>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end' }}>
+                <span style={{
+                  fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999, textTransform:'uppercase',
+                  background: v.estado==='activo' ? '#E4F6EF' : v.estado==='suspendido' ? '#FDE3E7' : '#FDE9CC',
+                  color: v.estado==='activo' ? '#1FAE7C' : v.estado==='suspendido' ? '#D62A48' : '#B5750B'
+                }}>{v.estado}</span>
+                <span style={{
+                  fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999,
+                  background: v.plan==='pro' ? '#FFF3D6' : '#F1EDE4',
+                  color: v.plan==='pro' ? '#B5750B' : '#57536B'
+                }}>{v.plan==='pro' ? 'PRO ✨' : 'GRATIS'}</span>
               </div>
             </div>
             <div style={{fontSize:11.5, color:'#57536B', marginBottom:10}}>
@@ -1220,10 +1272,9 @@ function AdminPanel() {
               <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color: v.plan==='pro' ? '#17162A' : '#17162A'}}
                 onClick={()=>cambiarPlan(v.id, 'pro')}>Plan Pro ✨</button>
             </div>
-            <p style={{fontSize:11, marginTop:8, color:'#57536B'}}>Estado: <strong>{v.estado}</strong> · Plan: <strong>{v.plan || 'gratis'}</strong></p>
           </div>
         ))}
-        {vendedores.length === 0 && <div className="empty">Aún no hay tiendas registradas.</div>}
+        {vendedoresFiltrados.length === 0 && <div className="empty">No hay tiendas que coincidan con la búsqueda.</div>}
       </main>
     </div>
   )
