@@ -387,6 +387,9 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
   const [busqueda, setBusqueda] = useState('')
+  const [compararActivo, setCompararActivo] = useState(false)
+  const [compararDesde, setCompararDesde] = useState('')
+  const [compararHasta, setCompararHasta] = useState('')
 
   async function cargarProductos() {
     const { data } = await supabase.from('productos').select('*').eq('vendedor_id', vendedor.id).order('creado_en', { ascending:false })
@@ -505,6 +508,70 @@ function PanelVendedor({ vendedor, setVendedor }) {
   const ventasPorDia = Object.entries(ventasPorDiaMap).sort((a,b)=>a[0].localeCompare(b[0])).slice(-10)
   const maxVentaDia = Math.max(1, ...ventasPorDia.map(([,v])=>v))
 
+  const isoFecha = d => d.toISOString().slice(0,10)
+
+  function aplicarPreset(preset) {
+    const hoy = new Date()
+    if (preset === 'hoy') {
+      setFiltroDesde(isoFecha(hoy)); setFiltroHasta(isoFecha(hoy))
+    } else if (preset === '7dias') {
+      const ini = new Date(hoy); ini.setDate(ini.getDate() - 6)
+      setFiltroDesde(isoFecha(ini)); setFiltroHasta(isoFecha(hoy))
+    } else if (preset === 'mes') {
+      const ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+      setFiltroDesde(isoFecha(ini)); setFiltroHasta(isoFecha(hoy))
+    } else if (preset === 'mesAnterior') {
+      const ini = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1)
+      const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0)
+      setFiltroDesde(isoFecha(ini)); setFiltroHasta(isoFecha(fin))
+    } else if (preset === 'todo') {
+      setFiltroDesde(''); setFiltroHasta('')
+    }
+  }
+
+  function activarComparacion() {
+    if (!compararDesde && !compararHasta) {
+      const hoy = new Date()
+      const ini = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1)
+      const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0)
+      setCompararDesde(isoFecha(ini)); setCompararHasta(isoFecha(fin))
+    }
+    setCompararActivo(true)
+  }
+
+  function calcularResumenRango(desde, hasta) {
+    const filtrados = pedidos.filter(p => {
+      const fecha = p.creado_en.slice(0,10)
+      if (desde && fecha < desde) return false
+      if (hasta && fecha > hasta) return false
+      return true
+    })
+    const validos = filtrados.filter(p => p.estado !== 'cancelado')
+    return {
+      pedidos: validos.length,
+      unidades: validos.reduce((a,p)=>a+p.cantidad, 0),
+      ingresos: validos.reduce((a,p)=>a+(p.precio_unitario||0)*p.cantidad, 0),
+      clientes: new Set(validos.map(p=>p.telefono_cliente)).size
+    }
+  }
+
+  const resumenComparacion = compararActivo ? calcularResumenRango(compararDesde, compararHasta) : null
+
+  function calcularDelta(actual, anterior) {
+    if (!compararActivo || anterior === undefined) return null
+    if (anterior === 0) return actual > 0 ? 100 : null
+    return ((actual - anterior) / anterior) * 100
+  }
+
+  function BadgeDelta({ valor }) {
+    if (valor === null || valor === undefined) return null
+    const positivo = valor >= 0
+    return (
+      <div style={{ fontSize:10, marginTop:2, fontWeight:700, color: positivo ? '#1FAE7C' : '#D62A48' }}>
+        {positivo ? '▲' : '▼'} {Math.abs(valor).toFixed(0)}% vs periodo anterior
+      </div>
+    )
+  }
 
   function mostrarToast(m) {
     setToast(m)
@@ -753,22 +820,71 @@ function PanelVendedor({ vendedor, setVendedor }) {
           </>
         ) : vista === 'analisis' ? (
           <>
+            <div className="form-card">
+              <h3>Periodo a analizar</h3>
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10 }}>
+                {[['hoy','Hoy'],['7dias','Últimos 7 días'],['mes','Este mes'],['mesAnterior','Mes anterior'],['todo','Todo']].map(([key,label]) => (
+                  <button key={key} type="button" onClick={()=>aplicarPreset(key)} style={{
+                    fontSize:11, fontWeight:600, padding:'6px 10px', borderRadius:999, border:'1px solid #EAE4D8',
+                    background:'#F1EDE4', color:'#17162A', cursor:'pointer'
+                  }}>{label}</button>
+                ))}
+              </div>
+              <div className="row2">
+                <div style={{flex:1}}>
+                  <label>Desde</label>
+                  <input type="date" value={filtroDesde} onChange={e=>setFiltroDesde(e.target.value)} />
+                </div>
+                <div style={{flex:1}}>
+                  <label>Hasta</label>
+                  <input type="date" value={filtroHasta} onChange={e=>setFiltroHasta(e.target.value)} />
+                </div>
+              </div>
+
+              {!compararActivo ? (
+                <button type="button" className="btn" style={{marginTop:12, background:'#F1EDE4'}} onClick={activarComparacion}>
+                  📊 Comparar con otro periodo
+                </button>
+              ) : (
+                <div style={{marginTop:12, paddingTop:12, borderTop:'1px dashed #EAE4D8'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                    <label style={{margin:0}}>Comparar contra</label>
+                    <span style={{fontSize:11, color:'#FF3B5C', fontWeight:600, cursor:'pointer'}} onClick={()=>setCompararActivo(false)}>Quitar</span>
+                  </div>
+                  <div className="row2">
+                    <div style={{flex:1}}>
+                      <label>Desde</label>
+                      <input type="date" value={compararDesde} onChange={e=>setCompararDesde(e.target.value)} />
+                    </div>
+                    <div style={{flex:1}}>
+                      <label>Hasta</label>
+                      <input type="date" value={compararHasta} onChange={e=>setCompararHasta(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
               <div className="form-card" style={{ textAlign:'center', margin:0 }}>
                 <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20, color:'#1FAE7C'}}>Q{resumen.ingresos.toFixed(2)}</div>
                 <div style={{fontSize:11, color:'#57536B'}}>Ventas totales</div>
+                <BadgeDelta valor={calcularDelta(resumen.ingresos, resumenComparacion?.ingresos)} />
               </div>
               <div className="form-card" style={{ textAlign:'center', margin:0 }}>
                 <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20}}>{resumen.pedidos}</div>
                 <div style={{fontSize:11, color:'#57536B'}}>Pedidos</div>
+                <BadgeDelta valor={calcularDelta(resumen.pedidos, resumenComparacion?.pedidos)} />
               </div>
               <div className="form-card" style={{ textAlign:'center', margin:0 }}>
                 <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20}}>{resumen.unidades}</div>
                 <div style={{fontSize:11, color:'#57536B'}}>Unidades vendidas</div>
+                <BadgeDelta valor={calcularDelta(resumen.unidades, resumenComparacion?.unidades)} />
               </div>
               <div className="form-card" style={{ textAlign:'center', margin:0 }}>
                 <div style={{fontFamily:"'Space Grotesk',sans-serif", fontWeight:700, fontSize:20}}>{clientesUnicos}</div>
                 <div style={{fontSize:11, color:'#57536B'}}>Clientes distintos</div>
+                <BadgeDelta valor={calcularDelta(clientesUnicos, resumenComparacion?.clientes)} />
               </div>
             </div>
 
