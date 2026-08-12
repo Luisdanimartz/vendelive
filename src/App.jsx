@@ -28,6 +28,7 @@ export default function App() {
   const [checkingVendedor, setCheckingVendedor] = useState(true)
   const [loadingSession, setLoadingSession] = useState(true)
   const [recovery, setRecovery] = useState(false)
+  const [esColaborador, setEsColaborador] = useState(false)
 
   const path = window.location.pathname
 
@@ -54,22 +55,31 @@ export default function App() {
 
   useEffect(() => {
     if (!session) { setCheckingVendedor(false); return }
+    if (session.user.email === ADMIN_EMAIL) { setCheckingVendedor(false); return }
     setCheckingVendedor(true)
-    supabase
-      .from('vendedores')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        setVendedor(data)
-        setCheckingVendedor(false)
+    supabase.from('colaboradores').select('activo').eq('correo', session.user.email).maybeSingle()
+      .then(({ data: colab }) => {
+        if (colab && colab.activo) {
+          setEsColaborador(true)
+          setCheckingVendedor(false)
+          return
+        }
+        supabase
+          .from('vendedores')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            setVendedor(data)
+            setCheckingVendedor(false)
+          })
       })
   }, [session])
 
   if (recovery) return <NuevaClave onDone={() => setRecovery(false)} />
   if (loadingSession) return <PantallaCarga />
   if (!session) return <Auth />
-  if (session.user.email === ADMIN_EMAIL) return <AdminPanel />
+  if (session.user.email === ADMIN_EMAIL || esColaborador) return <AdminPanel />
   if (checkingVendedor) return <PantallaCarga />
   if (!vendedor) return <CrearTienda userId={session.user.id} correo={session.user.email} onCreated={setVendedor} />
   return <PanelVendedor vendedor={vendedor} setVendedor={setVendedor} />
@@ -1183,6 +1193,13 @@ function AdminPanel() {
   const [vendedores, setVendedores] = useState([])
   const [busquedaAdmin, setBusquedaAdmin] = useState('')
   const [filtroEstadoAdmin, setFiltroEstadoAdmin] = useState('todos')
+  const [miColaborador, setMiColaborador] = useState(undefined) // undefined = sin revisar, null = no es colaborador
+  const [colaboradores, setColaboradores] = useState([])
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [nuevoCorreo, setNuevoCorreo] = useState('')
+  const [nuevoTelefono, setNuevoTelefono] = useState('')
+
+  const esDueño = session && session.user.email === ADMIN_EMAIL
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1194,8 +1211,37 @@ function AdminPanel() {
   }, [])
 
   useEffect(() => {
-    if (session && session.user.email === ADMIN_EMAIL) cargar()
+    if (!session) return
+    if (session.user.email === ADMIN_EMAIL) { cargar(); cargarColaboradores(); return }
+    supabase.from('colaboradores').select('*').eq('correo', session.user.email).maybeSingle()
+      .then(({ data }) => {
+        setMiColaborador(data || null)
+        if (data && data.activo) cargar()
+      })
   }, [session])
+
+  async function cargarColaboradores() {
+    const { data } = await supabase.from('colaboradores').select('*').order('creado_en', { ascending:false })
+    setColaboradores(data || [])
+  }
+
+  async function agregarColaborador(e) {
+    e.preventDefault()
+    if (!nuevoNombre || !nuevoCorreo) return
+    await supabase.from('colaboradores').insert({ nombre: nuevoNombre, correo: nuevoCorreo, telefono: nuevoTelefono })
+    setNuevoNombre(''); setNuevoCorreo(''); setNuevoTelefono('')
+    cargarColaboradores()
+  }
+
+  async function toggleColaborador(id, activo) {
+    await supabase.from('colaboradores').update({ activo: !activo }).eq('id', id)
+    cargarColaboradores()
+  }
+
+  async function eliminarColaborador(id) {
+    await supabase.from('colaboradores').delete().eq('id', id)
+    cargarColaboradores()
+  }
 
   async function cargar() {
     const { data } = await supabase.from('vendedores').select('*').order('creado_en', { ascending:false })
@@ -1282,7 +1328,9 @@ function AdminPanel() {
     )
   }
 
-  if (session.user.email !== ADMIN_EMAIL) {
+  if (!esDueño && miColaborador === undefined) return <PantallaCarga />
+
+  if (!esDueño && (!miColaborador || !miColaborador.activo)) {
     return <div className="phone"><div className="empty" style={{paddingTop:100}}>No autorizado.</div></div>
   }
 
@@ -1291,7 +1339,7 @@ function AdminPanel() {
       <header className="hero">
         <span className="live-badge"><span className="dot"></span>Admin</span>
         <h1 className="brand">Vendé<span>Live</span></h1>
-        <p className="tagline">Panel de administrador</p>
+        <p className="tagline">{esDueño ? 'Panel de administrador' : `Panel de colaborador — ${miColaborador.nombre}`}</p>
         <p style={{fontSize:11.5, marginTop:10, cursor:'pointer', color:'#B8B4C9', textDecoration:'underline'}}
           onClick={()=>supabase.auth.signOut()}>
           Cerrar sesión
@@ -1343,21 +1391,59 @@ function AdminPanel() {
             <div style={{fontSize:11.5, color:'#57536B', marginBottom:10}}>
               Tel: {v.telefono || '—'} · /tienda/{v.slug}
             </div>
-            <div className="row2">
-              <button className="btn" style={{background: v.estado==='activo' ? '#1FAE7C' : '#F1EDE4', color: v.estado==='activo' ? '#fff' : '#17162A'}}
-                onClick={()=>cambiarEstado(v.id, 'activo')}>Activar</button>
-              <button className="btn" style={{background: v.estado==='suspendido' ? '#D62A48' : '#F1EDE4', color: v.estado==='suspendido' ? '#fff' : '#17162A'}}
-                onClick={()=>cambiarEstado(v.id, 'suspendido')}>Suspender</button>
-            </div>
-            <div className="row2" style={{marginTop:8}}>
-              <button className="btn" style={{background: v.plan!=='pro' ? '#17162A' : '#F1EDE4', color: v.plan!=='pro' ? '#fff' : '#17162A'}}
-                onClick={()=>cambiarPlan(v.id, 'gratis')}>Plan Gratis</button>
-              <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color: v.plan==='pro' ? '#17162A' : '#17162A'}}
-                onClick={()=>cambiarPlan(v.id, 'pro')}>Plan Pro ✨</button>
-            </div>
+            {esDueño && (
+              <>
+                <div className="row2">
+                  <button className="btn" style={{background: v.estado==='activo' ? '#1FAE7C' : '#F1EDE4', color: v.estado==='activo' ? '#fff' : '#17162A'}}
+                    onClick={()=>cambiarEstado(v.id, 'activo')}>Activar</button>
+                  <button className="btn" style={{background: v.estado==='suspendido' ? '#D62A48' : '#F1EDE4', color: v.estado==='suspendido' ? '#fff' : '#17162A'}}
+                    onClick={()=>cambiarEstado(v.id, 'suspendido')}>Suspender</button>
+                </div>
+                <div className="row2" style={{marginTop:8}}>
+                  <button className="btn" style={{background: v.plan!=='pro' ? '#17162A' : '#F1EDE4', color: v.plan!=='pro' ? '#fff' : '#17162A'}}
+                    onClick={()=>cambiarPlan(v.id, 'gratis')}>Plan Gratis</button>
+                  <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color: v.plan==='pro' ? '#17162A' : '#17162A'}}
+                    onClick={()=>cambiarPlan(v.id, 'pro')}>Plan Pro ✨</button>
+                </div>
+              </>
+            )}
           </div>
         ))}
         {vendedoresFiltrados.length === 0 && <div className="empty">No hay tiendas que coincidan con la búsqueda.</div>}
+
+        {esDueño && (
+          <>
+            <div className="section-title" style={{marginTop:24}}>Colaboradores <span className="count-pill">{colaboradores.length}</span></div>
+            <div className="form-card">
+              <h3>Agregar colaborador</h3>
+              <form onSubmit={agregarColaborador}>
+                <label>Nombre</label>
+                <input type="text" value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} required />
+                <label>Correo (con el que va a registrarse)</label>
+                <input type="text" value={nuevoCorreo} onChange={e=>setNuevoCorreo(e.target.value)} required />
+                <label>WhatsApp</label>
+                <input type="text" value={nuevoTelefono} onChange={e=>setNuevoTelefono(e.target.value)} placeholder="0000-0000" />
+                <button className="btn btn-primary" type="submit">Dar acceso</button>
+              </form>
+            </div>
+            {colaboradores.map(c => (
+              <div className="form-card" key={c.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:13.5}}>{c.nombre}</div>
+                  <div style={{fontSize:11.5, color:'#57536B'}}>{c.correo}{c.telefono ? ` · ${c.telefono}` : ''}</div>
+                  <span style={{
+                    fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:999, display:'inline-block', marginTop:4,
+                    background: c.activo ? '#E4F6EF' : '#FDE3E7', color: c.activo ? '#1FAE7C' : '#D62A48'
+                  }}>{c.activo ? 'ACTIVO' : 'DESACTIVADO'}</span>
+                </div>
+                <div style={{display:'flex', gap:6}}>
+                  <button className="icon-btn" title={c.activo ? 'Desactivar' : 'Activar'} onClick={()=>toggleColaborador(c.id, c.activo)}>{c.activo ? '⏸️' : '▶️'}</button>
+                  <button className="icon-btn" title="Eliminar" onClick={()=>eliminarColaborador(c.id)}>🗑️</button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </main>
     </div>
   )
