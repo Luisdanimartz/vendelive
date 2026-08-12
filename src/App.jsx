@@ -1074,6 +1074,11 @@ function PanelVendedor({ vendedor, setVendedor }) {
                 <span className={`stock-badge ${p.existencia>0?'stock-ok':'stock-out'}`}>{p.existencia>0?'Disponible':'Agotado'}</span>
               </div>
             </div>
+            <button className="icon-btn" title="Copiar link directo a este producto"
+              onClick={()=>{
+                navigator.clipboard.writeText(`${window.location.origin}/tienda/${vendedor.slug}?codigo=${p.codigo}`)
+                mostrarToast('Link directo copiado')
+              }}>🔗</button>
             <button className="icon-btn" onClick={()=>editar(p)}>✏️</button>
             <button className="icon-btn" onClick={()=>eliminar(p.id)}>🗑️</button>
           </div>
@@ -1289,6 +1294,7 @@ function TiendaPublica({ slug }) {
   const [buyer, setBuyer] = useState({ nombre:'', telefono:'', direccion:'', observacion:'' })
   const [toast, setToast] = useState('')
   const [confirming, setConfirming] = useState(false)
+  const [codigoBuscado, setCodigoBuscado] = useState('')
 
   useEffect(() => {
     supabase.from('vendedores').select('*').eq('slug', slug).eq('estado','activo').maybeSingle()
@@ -1299,6 +1305,29 @@ function TiendaPublica({ slug }) {
     if (!vendedor) return
     cargarProductos()
   }, [vendedor])
+
+  useEffect(() => {
+    if (productos.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const codigoUrl = params.get('codigo')
+    if (codigoUrl) {
+      const pos = productos.findIndex(p => p.codigo.toLowerCase() === codigoUrl.toLowerCase())
+      if (pos >= 0) setIndice(pos)
+    }
+  }, [productos])
+
+  function buscarPorCodigo(e) {
+    e.preventDefault()
+    if (!codigoBuscado.trim()) return
+    const pos = productos.findIndex(p => p.codigo.toLowerCase() === codigoBuscado.trim().toLowerCase())
+    if (pos >= 0) {
+      setIndice(pos)
+      mostrarToast(`Mostrando: ${productos[pos].nombre}`)
+    } else {
+      mostrarToast('⚠️ No encontramos ese código')
+    }
+    setCodigoBuscado('')
+  }
 
   async function cargarProductos() {
     const { data } = await supabase.from('productos').select('*').eq('vendedor_id', vendedor.id).order('creado_en', { ascending:false })
@@ -1391,6 +1420,13 @@ function TiendaPublica({ slug }) {
         </div>
       </header>
       <main>
+        {productos.length > 1 && (
+          <form onSubmit={buscarPorCodigo} style={{ display:'flex', gap:8, marginBottom:14 }}>
+            <input type="text" value={codigoBuscado} onChange={e=>setCodigoBuscado(e.target.value)}
+              placeholder="¿Te dieron un código en vivo? Escríbelo aquí" style={{ flex:1 }} />
+            <button type="submit" className="btn" style={{ width:'auto', padding:'0 16px', background:'#17162A', color:'#fff' }}>Ir</button>
+          </form>
+        )}
         {productos.length === 0 && <div className="empty">Todavía no hay productos.</div>}
         {productos.length > 0 && (() => {
           const p = productos[indice]
