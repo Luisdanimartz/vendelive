@@ -695,6 +695,13 @@ function PanelVendedor({ vendedor, setVendedor }) {
     return LIMITE_PLAN_GRATIS
   }
 
+  function diasParaVencer(fechaVence) {
+    if (!fechaVence) return null
+    const hoy = new Date(); hoy.setHours(0,0,0,0)
+    const vence = new Date(fechaVence + 'T00:00:00')
+    return Math.round((vence - hoy) / (1000*60*60*24))
+  }
+
   async function guardar(e) {
     e.preventDefault()
     const limite = limiteDePlan(vendedor.plan)
@@ -1183,6 +1190,18 @@ function PanelVendedor({ vendedor, setVendedor }) {
               <div style={{ fontSize:11, color:'#57536B', marginTop:2 }}>
                 {vendedor.plan === 'pro' ? 'Productos ilimitados + insignias Nuevo/Rebaja' : `${productos.length} de ${limiteDePlan(vendedor.plan)} productos usados`}
               </div>
+              {vendedor.plan && vendedor.plan !== 'gratis' && vendedor.plan_vence_en && (() => {
+                const dias = diasParaVencer(vendedor.plan_vence_en)
+                const fechaTexto = new Date(vendedor.plan_vence_en + 'T00:00:00').toLocaleDateString('es-GT', { day:'2-digit', month:'short', year:'numeric' })
+                const color = dias < 0 ? '#D62A48' : dias <= 5 ? '#B5750B' : '#1FAE7C'
+                const bg = dias < 0 ? '#FDE3E7' : dias <= 5 ? '#FDE9CC' : '#E4F6EF'
+                const texto = dias < 0 ? `⚠️ Tu plan venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}` : dias === 0 ? '⏰ Tu plan vence hoy' : `Vence el ${fechaTexto} (${dias} día${dias===1?'':'s'})`
+                return (
+                  <div style={{ fontSize:11, fontWeight:700, color, background:bg, padding:'4px 9px', borderRadius:8, marginTop:6, display:'inline-block' }}>
+                    {texto}
+                  </div>
+                )
+              })()}
             </div>
           </div>
           {vendedor.plan !== 'pro' && (
@@ -1322,8 +1341,39 @@ function AdminPanel() {
   }
 
   async function cambiarPlan(id, nuevoPlan) {
-    await supabase.from('vendedores').update({ plan: nuevoPlan }).eq('id', id)
+    const payload = { plan: nuevoPlan }
+    if (nuevoPlan === 'gratis') {
+      payload.plan_activado_en = null
+      payload.plan_vence_en = null
+    } else {
+      const activado = new Date()
+      const vence = new Date(activado)
+      vence.setDate(vence.getDate() + 30)
+      payload.plan_activado_en = activado.toISOString()
+      payload.plan_vence_en = vence.toISOString().slice(0,10)
+    }
+    await supabase.from('vendedores').update(payload).eq('id', id)
     cargar()
+  }
+
+  function diasParaVencer(fechaVence) {
+    if (!fechaVence) return null
+    const hoy = new Date(); hoy.setHours(0,0,0,0)
+    const vence = new Date(fechaVence + 'T00:00:00')
+    return Math.round((vence - hoy) / (1000*60*60*24))
+  }
+
+  const [confirmarAccion, setConfirmarAccion] = useState(null) // { tipo:'estado'|'plan', valor, vendedor }
+
+  function pedirConfirmacion(tipo, valor, vendedor) {
+    setConfirmarAccion({ tipo, valor, vendedor })
+  }
+
+  function ejecutarConfirmacion() {
+    if (!confirmarAccion) return
+    if (confirmarAccion.tipo === 'estado') cambiarEstado(confirmarAccion.vendedor.id, confirmarAccion.valor)
+    else cambiarPlan(confirmarAccion.vendedor.id, confirmarAccion.valor)
+    setConfirmarAccion(null)
   }
 
   const vendedoresFiltrados = vendedores.filter(v => {
@@ -1443,21 +1493,33 @@ function AdminPanel() {
             <div style={{fontSize:11.5, color:'#57536B', marginBottom:10}}>
               Tel: {v.telefono || '—'} · /tienda/{v.slug}
             </div>
+            {v.plan && v.plan !== 'gratis' && v.plan_vence_en && (() => {
+              const dias = diasParaVencer(v.plan_vence_en)
+              const fechaTexto = new Date(v.plan_vence_en + 'T00:00:00').toLocaleDateString('es-GT', { day:'2-digit', month:'short', year:'numeric' })
+              const color = dias < 0 ? '#D62A48' : dias <= 5 ? '#B5750B' : '#1FAE7C'
+              const bg = dias < 0 ? '#FDE3E7' : dias <= 5 ? '#FDE9CC' : '#E4F6EF'
+              const texto = dias < 0 ? `⚠️ Vencido hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}` : dias === 0 ? '⏰ Vence hoy' : `Vence ${fechaTexto} (${dias} día${dias===1?'':'s'})`
+              return (
+                <div style={{ fontSize:11, fontWeight:700, color, background:bg, padding:'5px 10px', borderRadius:8, marginBottom:10, display:'inline-block' }}>
+                  {texto}
+                </div>
+              )
+            })()}
             {esDueño && (
               <>
                 <div className="row2">
                   <button className="btn" style={{background: v.estado==='activo' ? '#1FAE7C' : '#F1EDE4', color: v.estado==='activo' ? '#fff' : '#17162A'}}
-                    onClick={()=>cambiarEstado(v.id, 'activo')}>Activar</button>
+                    onClick={()=>pedirConfirmacion('estado', 'activo', v)}>Activar</button>
                   <button className="btn" style={{background: v.estado==='suspendido' ? '#D62A48' : '#F1EDE4', color: v.estado==='suspendido' ? '#fff' : '#17162A'}}
-                    onClick={()=>cambiarEstado(v.id, 'suspendido')}>Suspender</button>
+                    onClick={()=>pedirConfirmacion('estado', 'suspendido', v)}>Suspender</button>
                 </div>
                 <div style={{display:'flex', gap:6, marginTop:8}}>
                   <button className="btn" style={{background: (!v.plan||v.plan==='gratis') ? '#17162A' : '#F1EDE4', color: (!v.plan||v.plan==='gratis') ? '#fff' : '#17162A', fontSize:11.5}}
-                    onClick={()=>cambiarPlan(v.id, 'gratis')}>Gratis</button>
+                    onClick={()=>pedirConfirmacion('plan', 'gratis', v)}>Gratis</button>
                   <button className="btn" style={{background: v.plan==='basico' ? '#1D6FA5' : '#F1EDE4', color: v.plan==='basico' ? '#fff' : '#17162A', fontSize:11.5}}
-                    onClick={()=>cambiarPlan(v.id, 'basico')}>Básico</button>
+                    onClick={()=>pedirConfirmacion('plan', 'basico', v)}>Básico</button>
                   <button className="btn" style={{background: v.plan==='pro' ? '#FFB627' : '#F1EDE4', color:'#17162A', fontSize:11.5}}
-                    onClick={()=>cambiarPlan(v.id, 'pro')}>Pro ✨</button>
+                    onClick={()=>pedirConfirmacion('plan', 'pro', v)}>Pro ✨</button>
                 </div>
               </>
             )}
@@ -1499,6 +1561,25 @@ function AdminPanel() {
           </>
         )}
       </main>
+
+      {confirmarAccion && (
+        <div className="overlay active" onClick={e=>{ if(e.target.className.includes('overlay')) setConfirmarAccion(null) }}>
+          <div className="sheet">
+            <h3>¿Confirmas este cambio?</h3>
+            <p className="sub">Tienda: <strong>{confirmarAccion.vendedor.nombre_tienda}</strong></p>
+            <p style={{fontSize:13.5, margin:'12px 0'}}>
+              {confirmarAccion.tipo === 'estado'
+                ? <>Vas a cambiar el estado a <strong>{confirmarAccion.valor}</strong>.</>
+                : <>Vas a cambiar el plan a <strong>{confirmarAccion.valor === 'gratis' ? 'Gratis' : confirmarAccion.valor === 'basico' ? 'Básico' : 'Pro ✨'}</strong>.</>
+              }
+            </p>
+            <div className="row2">
+              <button className="btn" style={{background:'#F1EDE4', color:'#17162A'}} onClick={()=>setConfirmarAccion(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{marginTop:0}} onClick={ejecutarConfirmacion}>Sí, confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
